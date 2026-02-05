@@ -39,6 +39,13 @@ create table if not exists orchestrator_workflows (
   payload jsonb not null,
   created_at timestamptz not null
 );
+create table if not exists orchestrator_workflow_versions (
+  id text primary key,
+  workflow_id text not null,
+  version int not null,
+  payload jsonb not null,
+  created_at timestamptz not null
+);
 create table if not exists orchestrator_runs (
   id text primary key,
   workflow_id text not null,
@@ -132,6 +139,68 @@ func (s *PGStore) GetRun(id string) (Run, error) {
 		return Run{}, err
 	}
 	return r, nil
+}
+
+func (s *PGStore) SaveVersion(w Workflow) WorkflowVersion {
+	b, _ := json.Marshal(w)
+	var version int
+	_ = s.db.QueryRow(`select coalesce(max(version),0)+1 from orchestrator_workflow_versions where workflow_id=$1`, w.ID).Scan(&version)
+	v := WorkflowVersion{
+		ID:         newID("wfver"),
+		WorkflowID: w.ID,
+		Version:    version,
+		Payload:    w,
+		CreatedAt:  time.Now().UTC(),
+	}
+	_, _ = s.db.Exec(`insert into orchestrator_workflow_versions (id, workflow_id, version, payload, created_at) values ($1,$2,$3,$4,$5)`,
+		v.ID, v.WorkflowID, v.Version, b, v.CreatedAt)
+	return v
+}
+
+func (s *PGStore) ListVersions(workflowID string) []WorkflowVersion {
+	rows, err := s.db.Query(`select id, version, payload, created_at from orchestrator_workflow_versions where workflow_id=$1 order by version asc`, workflowID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []WorkflowVersion
+	for rows.Next() {
+		var id string
+		var version int
+		var raw []byte
+		var created time.Time
+		if err := rows.Scan(&id, &version, &raw, &created); err != nil {
+			continue
+		}
+		var w Workflow
+		if err := json.Unmarshal(raw, &w); err != nil {
+			continue
+		}
+		out = append(out, WorkflowVersion{
+			ID:         id,
+			WorkflowID: workflowID,
+			Version:    version,
+			Payload:    w,
+			CreatedAt:  created,
+		})
+	}
+	return out
+}
+
+func (s *PGStore) GetVersion(workflowID string, version int) (Workflow, error) {
+	var raw []byte
+	err := s.db.QueryRow(`select payload from orchestrator_workflow_versions where workflow_id=$1 and version=$2`, workflowID, version).Scan(&raw)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return Workflow{}, ErrNotFound
+		}
+		return Workflow{}, err
+	}
+	var w Workflow
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return Workflow{}, err
+	}
+	return w, nil
 }
 
 func (s *PGStore) AppendLog(runID string, msg string) {

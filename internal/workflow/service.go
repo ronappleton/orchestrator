@@ -26,7 +26,7 @@ func (s *Service) CreateWorkflow(w Workflow) Workflow {
 			w.Steps[i].ID = newID("step")
 		}
 	}
-	saveVersion(w)
+	s.store.SaveVersion(w)
 	return s.store.CreateWorkflow(w)
 }
 
@@ -68,6 +68,18 @@ func (s *Service) AppendLog(id string, msg string) {
 
 func (s *Service) ListLogs(id string) []string {
 	return s.store.ListLogs(id)
+}
+
+func (s *Service) ListVersions(id string) []WorkflowVersion {
+	return s.store.ListVersions(id)
+}
+
+func (s *Service) RollbackVersion(id string, version int) (Workflow, error) {
+	wf, err := s.store.GetVersion(id, version)
+	if err != nil {
+		return Workflow{}, err
+	}
+	return s.CreateWorkflow(wf), nil
 }
 
 func (s *Service) ApproveRun(ctx context.Context, id string) (Run, error) {

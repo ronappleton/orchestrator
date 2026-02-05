@@ -4,7 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sync"
+
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
+
+var schemaCache sync.Map
 
 func ValidateAgainstSchema(schemaPath string, wf Workflow) error {
 	if schemaPath == "" {
@@ -14,10 +19,20 @@ func ValidateAgainstSchema(schemaPath string, wf Workflow) error {
 	if err != nil {
 		return err
 	}
-	// Minimal schema validation placeholder: ensure JSON parses.
-	// Can be replaced by a JSON schema validator later.
 	if !json.Valid(data) {
 		return errors.New("invalid schema json")
 	}
-	return nil
+	compiled, ok := schemaCache.Load(schemaPath)
+	if !ok {
+		c, err := jsonschema.CompileString(schemaPath, string(data))
+		if err != nil {
+			return err
+		}
+		schemaCache.Store(schemaPath, c)
+		compiled = c
+	}
+	raw, _ := json.Marshal(wf)
+	var payload interface{}
+	_ = json.Unmarshal(raw, &payload)
+	return compiled.(*jsonschema.Schema).Validate(payload)
 }

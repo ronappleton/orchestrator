@@ -17,6 +17,9 @@ type Store interface {
 	GetRun(id string) (Run, error)
 	AppendLog(runID string, msg string)
 	ListLogs(runID string) []string
+	SaveVersion(w Workflow) WorkflowVersion
+	ListVersions(workflowID string) []WorkflowVersion
+	GetVersion(workflowID string, version int) (Workflow, error)
 }
 
 type MemoryStore struct {
@@ -24,6 +27,7 @@ type MemoryStore struct {
 	workflows map[string]Workflow
 	runs      map[string]Run
 	logs      map[string][]string
+	versions  map[string][]WorkflowVersion
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -31,6 +35,7 @@ func NewMemoryStore() *MemoryStore {
 		workflows: map[string]Workflow{},
 		runs:      map[string]Run{},
 		logs:      map[string][]string{},
+		versions:  map[string][]WorkflowVersion{},
 	}
 }
 
@@ -95,4 +100,35 @@ func (s *MemoryStore) ListLogs(runID string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]string(nil), s.logs[runID]...)
+}
+
+func (s *MemoryStore) SaveVersion(w Workflow) WorkflowVersion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := WorkflowVersion{
+		ID:         newID("wfver"),
+		WorkflowID: w.ID,
+		Version:    len(s.versions[w.ID]) + 1,
+		Payload:    w,
+		CreatedAt:  time.Now().UTC(),
+	}
+	s.versions[w.ID] = append(s.versions[w.ID], v)
+	return v
+}
+
+func (s *MemoryStore) ListVersions(workflowID string) []WorkflowVersion {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]WorkflowVersion(nil), s.versions[workflowID]...)
+}
+
+func (s *MemoryStore) GetVersion(workflowID string, version int) (Workflow, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, v := range s.versions[workflowID] {
+		if v.Version == version {
+			return v.Payload, nil
+		}
+	}
+	return Workflow{}, ErrNotFound
 }

@@ -78,7 +78,7 @@ func (s *Server) handleWorkflowVersions(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "workflow id required", http.StatusBadRequest)
 		return
 	}
-	versions := workflow.ListVersions(id)
+	versions := s.wf.ListVersions(id)
 	writeJSON(w, map[string]any{"items": versions})
 }
 
@@ -96,12 +96,11 @@ func (s *Server) handleWorkflowRollback(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	wf, err := workflow.RollbackVersion(id, body.Version)
+	wf, err := s.wf.RollbackVersion(id, body.Version)
 	if err != nil {
 		http.Error(w, "version not found", http.StatusNotFound)
 		return
 	}
-	wf = s.wf.CreateWorkflow(wf)
 	writeJSON(w, wf)
 }
 
@@ -166,9 +165,13 @@ func (s *Server) handleRunByID(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		if action == "logs" {
+		if action == "logs" && len(parts) > 1 && len(parts) == 2 {
 			logs := s.wf.ListLogs(id)
 			writeJSON(w, map[string]any{"items": logs})
+			return
+		}
+		if action == "logs" && len(parts) > 2 && parts[2] == "stream" {
+			s.handleLogStream(w, r, id)
 			return
 		}
 		run, err := s.wf.GetRun(id)
@@ -214,6 +217,36 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)
+}
+
+func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request, runID string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	lastIdx := 0
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			logs := s.wf.ListLogs(runID)
+			for lastIdx < len(logs) {
+				msg := logs[lastIdx]
+				_, _ = w.Write([]byte("data: " + msg + "\n\n"))
+				flusher.Flush()
+				lastIdx++
+			}
+		}
+	}
 }
 
 func readBody(r *http.Request) []byte {
