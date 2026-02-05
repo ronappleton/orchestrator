@@ -2,8 +2,56 @@
 
 Workflow engine for multi-step jobs, retries, approvals, and state transitions.
 
-## Status
-- Skeleton created; API and implementation TBD.
+## API
+
+### Create workflow
+`POST /v1/workflows`
+```json
+{
+  "name": "demo",
+  "description": "Simple demo workflow",
+  "steps": [
+    {
+      "name": "call ai-router",
+      "action": "http",
+      "input": {
+        "method": "POST",
+        "url": "http://ai-router:8080/v1/chat/completions",
+        "headers": {"Content-Type": "application/json"},
+        "body": {
+          "model": "llama2",
+          "project_id": "default",
+          "messages": [{"role": "user", "content": "hello"}]
+        }
+      }
+    }
+  ]
+}
+```
+
+### Start run
+`POST /v1/runs`
+```json
+{
+  "workflow_id": "wf_...",
+  "context": {"project_id": "default"}
+}
+```
+
+### Approve / cancel / status
+- `POST /v1/runs/{id}/approve`
+- `POST /v1/runs/{id}/cancel`
+- `GET /v1/runs/{id}`
+
+## Step Actions
+Currently supported actions (all map to HTTP calls):
+- `http`
+- `ai_router.chat`
+- `web.search`
+- `web.extract`
+- `memarch.store_fact`
+- `memarch.search`
+- `scm.call`
 
 ## Running
 ```bash
