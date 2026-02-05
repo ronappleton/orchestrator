@@ -12,3 +12,6 @@ memarch:
 audit_log:
   base_url: ""
   timeout: "5s"
+
+policy:
+  require_approval: false

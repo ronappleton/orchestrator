@@ -69,6 +69,12 @@ func (s *Service) ApproveRun(ctx context.Context, id string) (Run, error) {
 	if run.Status != StatusWaitingApproval {
 		return run, nil
 	}
+	if run.Context == nil {
+		run.Context = map[string]interface{}{}
+	}
+	if run.CurrentStep >= 0 && run.CurrentStep < len(run.Steps) {
+		run.Context["approved_step_id"] = run.Steps[run.CurrentStep].StepID
+	}
 	run.Status = StatusRunning
 	s.store.UpdateRun(run)
 	go s.engine.Execute(ctx, run.ID)

@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	MemArch  EndpointConfig `yaml:"memarch"`
 	AuditLog EndpointConfig `yaml:"audit_log"`
+	Policy PolicyConfig `yaml:"policy"`
 }
 
 type ServerConfig struct {
@@ -27,6 +28,10 @@ type DatabaseConfig struct {
 type EndpointConfig struct {
 	BaseURL string `yaml:"base_url"`
 	Timeout string `yaml:"timeout"`
+}
+
+type PolicyConfig struct {
+	RequireApproval bool `yaml:"require_approval"`
 }
 
 func Default() Config {
@@ -45,6 +50,9 @@ func Default() Config {
 		AuditLog: EndpointConfig{
 			BaseURL: "",
 			Timeout: "5s",
+		},
+		Policy: PolicyConfig{
+			RequireApproval: false,
 		},
 	}
 }

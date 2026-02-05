@@ -51,6 +51,14 @@ func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, map[string]any{"items": workflow.BuiltinTemplates})
+}
+
 func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

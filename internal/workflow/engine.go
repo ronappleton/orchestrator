@@ -12,9 +12,10 @@ import (
 )
 
 type Engine struct {
-	store  Store
-	client *http.Client
-	notify *Notifier
+	store                  Store
+	client                 *http.Client
+	notify                 *Notifier
+	policyRequiresApproval bool
 }
 
 func NewEngine(store Store, notify *Notifier) *Engine {
@@ -23,6 +24,10 @@ func NewEngine(store Store, notify *Notifier) *Engine {
 		client: &http.Client{Timeout: 30 * time.Second},
 		notify: notify,
 	}
+}
+
+func (e *Engine) SetPolicyRequiresApproval(v bool) {
+	e.policyRequiresApproval = v
 }
 
 func (e *Engine) Execute(ctx context.Context, runID string) {
@@ -59,7 +64,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 			Status: StatusRunning,
 		}
 
-		if step.RequiresApproval {
+		if (step.RequiresApproval || e.policyRequiresApproval) && !e.isApproved(run, step) {
 			run.Status = StatusWaitingApproval
 			run.CurrentStep = i
 			run.Steps = append(run.Steps, StepRun{
@@ -73,7 +78,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 			return
 		}
 
-		out, code, err := e.executeStep(ctx, step)
+		out, code, stop, err := e.executeStep(ctx, run, step)
 		if err != nil {
 			stepRun.Status = StatusFailed
 			stepRun.Error = err.Error()
@@ -92,6 +97,12 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 		run.CurrentStep = i + 1
 		e.store.UpdateRun(run)
 		e.notify.StepEvent(run, stepRun, "step.succeeded")
+		if stop {
+			run.Status = StatusSucceeded
+			e.store.UpdateRun(run)
+			e.notify.RunEvent(run, "run.succeeded", "stopped by condition")
+			return
+		}
 	}
 
 	run.Status = StatusSucceeded
@@ -99,12 +110,17 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 	e.notify.RunEvent(run, "run.succeeded", "")
 }
 
-func (e *Engine) executeStep(ctx context.Context, step Step) (string, int, error) {
+func (e *Engine) executeStep(ctx context.Context, run Run, step Step) (string, int, bool, error) {
 	switch strings.ToLower(step.Action) {
 	case "http", "ai_router.chat", "web.search", "web.extract", "memarch.store_fact", "memarch.search", "scm.call":
-		return e.executeHTTP(ctx, step)
+		out, code, err := e.executeHTTP(ctx, step)
+		return out, code, false, err
+	case "transform":
+		return e.executeTransform(run, step)
+	case "condition":
+		return e.executeCondition(run, step)
 	default:
-		return "", 0, fmt.Errorf("unsupported action: %s", step.Action)
+		return "", 0, false, fmt.Errorf("unsupported action: %s", step.Action)
 	}
 }
 
@@ -154,4 +170,63 @@ func (e *Engine) executeHTTP(ctx context.Context, step Step) (string, int, error
 		return string(b), resp.StatusCode, fmt.Errorf("http status %d", resp.StatusCode)
 	}
 	return string(b), resp.StatusCode, nil
+}
+
+func (e *Engine) executeTransform(run Run, step Step) (string, int, bool, error) {
+	input := map[string]any{}
+	raw, _ := json.Marshal(step.Input)
+	_ = json.Unmarshal(raw, &input)
+	setMap, _ := input["set"].(map[string]any)
+	if run.Context == nil {
+		run.Context = map[string]any{}
+	}
+	for k, v := range setMap {
+		run.Context[k] = v
+	}
+	return "ok", http.StatusOK, false, nil
+}
+
+func (e *Engine) executeCondition(run Run, step Step) (string, int, bool, error) {
+	input := map[string]any{}
+	raw, _ := json.Marshal(step.Input)
+	_ = json.Unmarshal(raw, &input)
+	key, _ := input["key"].(string)
+	onFalse, _ := input["on_false"].(string)
+	equals := input["equals"]
+	notEquals := input["not_equals"]
+
+	val, ok := run.Context[key]
+	pass := false
+	if ok {
+		if equals != nil {
+			pass = val == equals
+		} else if notEquals != nil {
+			pass = val != notEquals
+		}
+	}
+	if pass {
+		return "condition true", http.StatusOK, false, nil
+	}
+	switch strings.ToLower(onFalse) {
+	case "stop":
+		return "condition false; stopping", http.StatusOK, true, nil
+	case "fail":
+		return "condition false; failing", http.StatusBadRequest, false, fmt.Errorf("condition failed")
+	default:
+		return "condition false; continue", http.StatusOK, false, nil
+	}
+}
+
+func (e *Engine) isApproved(run Run, step Step) bool {
+	if run.Context == nil {
+		return false
+	}
+	if v, ok := run.Context["approved_step_id"]; ok {
+		if s, ok := v.(string); ok && s == step.ID {
+			// Clear approval so it is one-time.
+			run.Context["approved_step_id"] = ""
+			return true
+		}
+	}
+	return false
 }
