@@ -1,21 +1,21 @@
 package config
 
 import (
-    "errors"
-    "os"
+	"errors"
+	"os"
 
-    "go.uber.org/fx"
-    "gopkg.in/yaml.v3"
+	"go.uber.org/fx"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	MemArch  EndpointConfig `yaml:"memarch"`
-	AuditLog EndpointConfig `yaml:"audit_log"`
+	Server       ServerConfig   `yaml:"server"`
+	Database     DatabaseConfig `yaml:"database"`
+	MemArch      EndpointConfig `yaml:"memarch"`
+	AuditLog     EndpointConfig `yaml:"audit_log"`
 	Notification EndpointConfig `yaml:"notification"`
-	Workspace EndpointConfig `yaml:"workspace"`
-	Policy PolicyConfig `yaml:"policy"`
+	Workspace    EndpointConfig `yaml:"workspace"`
+	Policy       PolicyConfig   `yaml:"policy"`
 }
 
 type ServerConfig struct {
@@ -33,8 +33,10 @@ type EndpointConfig struct {
 }
 
 type PolicyConfig struct {
-	RequireApproval bool `yaml:"require_approval"`
+	RequireApproval bool   `yaml:"require_approval"`
 	WorkflowSchema  string `yaml:"workflow_schema"`
+	BaseURL         string `yaml:"base_url"`
+	Timeout         string `yaml:"timeout"`
 }
 
 func Default() Config {
@@ -65,32 +67,34 @@ func Default() Config {
 		Policy: PolicyConfig{
 			RequireApproval: false,
 			WorkflowSchema:  "",
+			BaseURL:         "",
+			Timeout:         "5s",
 		},
 	}
 }
 
 func Load(path string) (Config, error) {
-    cfg := Default()
-    if path == "" {
-        return cfg, nil
-    }
+	cfg := Default()
+	if path == "" {
+		return cfg, nil
+	}
 
-    data, err := os.ReadFile(path)
-    if err != nil {
-        if errors.Is(err, os.ErrNotExist) {
-            return cfg, nil
-        }
-        return cfg, err
-    }
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return cfg, nil
+		}
+		return cfg, err
+	}
 
-    if err := yaml.Unmarshal(data, &cfg); err != nil {
-        return cfg, err
-    }
-    return cfg, nil
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
 }
 
 func Module(path string) fx.Option {
-    return fx.Provide(func() (Config, error) {
-        return Load(path)
-    })
+	return fx.Provide(func() (Config, error) {
+		return Load(path)
+	})
 }

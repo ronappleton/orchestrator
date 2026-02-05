@@ -17,16 +17,18 @@ type Engine struct {
 	notify                 *Notifier
 	notificationBaseURL    string
 	workspaceBaseURL       string
+	policyBaseURL          string
 	policyRequiresApproval bool
 }
 
-func NewEngine(store Store, notify *Notifier, notificationBaseURL, workspaceBaseURL string) *Engine {
+func NewEngine(store Store, notify *Notifier, notificationBaseURL, workspaceBaseURL, policyBaseURL string) *Engine {
 	return &Engine{
 		store:               store,
 		client:              &http.Client{Timeout: 30 * time.Second},
 		notify:              notify,
 		notificationBaseURL: strings.TrimRight(notificationBaseURL, "/"),
 		workspaceBaseURL:    strings.TrimRight(workspaceBaseURL, "/"),
+		policyBaseURL:       strings.TrimRight(policyBaseURL, "/"),
 	}
 }
 
@@ -149,10 +151,10 @@ func (e *Engine) executeStep(ctx context.Context, run Run, step Step) (string, i
 		out, code, err := e.executeHTTP(ctx, step)
 		return out, code, false, err
 	case "notify":
-		out, code, err := e.executeNotify(ctx, step)
+		out, code, err := e.executeNotify(ctx, run, step)
 		return out, code, false, err
 	case "workspace.check":
-		out, code, err := e.executeWorkspaceCheck(ctx, step)
+		out, code, err := e.executeWorkspaceCheck(ctx, run, step)
 		return out, code, false, err
 	case "policy.check":
 		out, code, err := e.executePolicyCheck(ctx, step)
@@ -232,7 +234,7 @@ type notifyInput struct {
 	Metadata map[string]string `json:"metadata"`
 }
 
-func (e *Engine) executeNotify(ctx context.Context, step Step) (string, int, error) {
+func (e *Engine) executeNotify(ctx context.Context, run Run, step Step) (string, int, error) {
 	if e.notificationBaseURL == "" {
 		return "", 0, fmt.Errorf("notification base_url not configured")
 	}
@@ -243,6 +245,9 @@ func (e *Engine) executeNotify(ctx context.Context, step Step) (string, int, err
 	}
 	if strings.TrimSpace(in.Channel) == "" || strings.TrimSpace(in.To) == "" {
 		return "", 0, fmt.Errorf("notify requires channel and to")
+	}
+	if err := e.ensurePolicyAllows(ctx, "notify", in.Channel, in.To, run, step); err != nil {
+		return "", 0, err
 	}
 	body, _ := json.Marshal(in)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.notificationBaseURL+"/v1/notify", bytes.NewReader(body))
@@ -262,7 +267,7 @@ func (e *Engine) executeNotify(ctx context.Context, step Step) (string, int, err
 	return string(b), resp.StatusCode, nil
 }
 
-func (e *Engine) executeWorkspaceCheck(ctx context.Context, step Step) (string, int, error) {
+func (e *Engine) executeWorkspaceCheck(ctx context.Context, run Run, step Step) (string, int, error) {
 	if e.workspaceBaseURL == "" {
 		return "", 0, fmt.Errorf("workspace base_url not configured")
 	}
@@ -275,6 +280,9 @@ func (e *Engine) executeWorkspaceCheck(ctx context.Context, step Step) (string, 
 	}
 	if strings.TrimSpace(id) == "" {
 		return "", 0, fmt.Errorf("workspace_id required")
+	}
+	if err := e.ensurePolicyAllows(ctx, "workspace.check", "", "", run, step); err != nil {
+		return "", 0, err
 	}
 	url := e.workspaceBaseURL + "/v1/workspaces/" + id
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -291,6 +299,62 @@ func (e *Engine) executeWorkspaceCheck(ctx context.Context, step Step) (string, 
 		return string(b), resp.StatusCode, fmt.Errorf("http status %d", resp.StatusCode)
 	}
 	return string(b), resp.StatusCode, nil
+}
+
+func (e *Engine) ensurePolicyAllows(ctx context.Context, action, channel, to string, run Run, step Step) error {
+	if e.policyBaseURL == "" {
+		return nil
+	}
+	payload := map[string]any{
+		"action": action,
+	}
+	if channel != "" {
+		payload["channel"] = channel
+	}
+	if to != "" {
+		payload["to"] = to
+	}
+	if run.Context != nil {
+		if ws, ok := run.Context["workspace_id"].(string); ok && ws != "" {
+			payload["workspace_id"] = ws
+		}
+	}
+	if step.Input != nil {
+		raw, _ := json.Marshal(step.Input)
+		var input map[string]any
+		_ = json.Unmarshal(raw, &input)
+		if ws, ok := input["workspace_id"].(string); ok && ws != "" {
+			payload["workspace_id"] = ws
+		}
+	}
+	raw, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.policyBaseURL+"/v1/check", bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("policy request failed")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("policy status %d", resp.StatusCode)
+	}
+	var res struct {
+		Allowed bool   `json:"allowed"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return err
+	}
+	if !res.Allowed {
+		if res.Reason == "" {
+			res.Reason = "denied by policy"
+		}
+		return fmt.Errorf(res.Reason)
+	}
+	return nil
 }
 
 func (e *Engine) executePolicyCheck(ctx context.Context, step Step) (string, int, error) {

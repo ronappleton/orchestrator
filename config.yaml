@@ -24,3 +24,5 @@ workspace:
 policy:
   require_approval: false
   workflow_schema: "schema/workflow.schema.json"
+  base_url: "http://policy-service:8103"
+  timeout: "5s"
