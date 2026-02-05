@@ -6,7 +6,24 @@
   "properties": {
     "id": {"type": "string"},
     "name": {"type": "string", "minLength": 1},
-    "action": {"type": "string", "minLength": 1},
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "enum": [
+        "http",
+        "ai_router.chat",
+        "web.search",
+        "web.extract",
+        "memarch.store_fact",
+        "memarch.search",
+        "scm.call",
+        "transform",
+        "condition",
+        "notify",
+        "workspace.check",
+        "policy.check"
+      ]
+    },
     "requires_approval": {"type": "boolean"},
     "retry": {
       "type": "object",

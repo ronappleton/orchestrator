@@ -154,6 +154,9 @@ func (e *Engine) executeStep(ctx context.Context, run Run, step Step) (string, i
 	case "workspace.check":
 		out, code, err := e.executeWorkspaceCheck(ctx, step)
 		return out, code, false, err
+	case "policy.check":
+		out, code, err := e.executePolicyCheck(ctx, step)
+		return out, code, false, err
 	case "transform":
 		return e.executeTransform(run, step)
 	case "condition":
@@ -278,6 +281,44 @@ func (e *Engine) executeWorkspaceCheck(ctx context.Context, step Step) (string, 
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to create request")
 	}
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return string(b), resp.StatusCode, fmt.Errorf("http status %d", resp.StatusCode)
+	}
+	return string(b), resp.StatusCode, nil
+}
+
+func (e *Engine) executePolicyCheck(ctx context.Context, step Step) (string, int, error) {
+	input := map[string]any{}
+	raw, _ := json.Marshal(step.Input)
+	_ = json.Unmarshal(raw, &input)
+
+	url, _ := input["url"].(string)
+	method, _ := input["method"].(string)
+	if method == "" {
+		method = http.MethodPost
+	}
+	bodyRaw, _ := input["body"]
+
+	if strings.TrimSpace(url) == "" {
+		return "", 0, fmt.Errorf("policy.check requires url")
+	}
+	payload := map[string]any{
+		"method": method,
+		"url":    url,
+		"body":   bodyRaw,
+	}
+	rawPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(rawPayload))
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := e.client.Do(req)
 	if err != nil {
 		return "", 0, err

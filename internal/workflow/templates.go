@@ -32,4 +32,14 @@ var BuiltinTemplates = []Workflow{
 			{Name: "execute", Action: "http", Input: map[string]any{"method": "POST", "url": "http://service/execute", "body": map[string]any{}}},
 		},
 	},
+	{
+		ID:          "tpl_workspace_notify",
+		Name:        "workspace_notify",
+		Description: "Workspace check followed by notification",
+		Steps: []Step{
+			{Name: "workspace_check", Action: "workspace.check", Input: map[string]any{"workspace_id": "ws_example"}},
+			{Name: "notify_policy", Action: "policy.check", Input: map[string]any{"url": "http://policy-service:8103/v1/check", "method": "POST", "body": map[string]any{"action": "notify", "channel": "email"}}},
+			{Name: "notify", Action: "notify", Input: map[string]any{"channel": "email", "to": "user@example.com", "subject": "Workspace ready", "body": "Workspace check passed."}},
+		},
+	},
 }
