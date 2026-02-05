@@ -1,0 +1,23 @@
+{
+  "templates": [
+    {
+      "name": "intake_enrich_decide_act",
+      "description": "Generic intake -> enrich -> decide -> act workflow",
+      "steps": [
+        {"name": "intake", "action": "http", "input": {"method": "POST", "url": "http://service/intake", "body": {}}},
+        {"name": "enrich", "action": "http", "input": {"method": "POST", "url": "http://service/enrich", "body": {}}},
+        {"name": "decide", "action": "http", "input": {"method": "POST", "url": "http://service/decide", "body": {}}},
+        {"name": "act", "action": "http", "input": {"method": "POST", "url": "http://service/act", "body": {}}}
+      ]
+    },
+    {
+      "name": "detect_classify_route",
+      "description": "Generic detect -> classify -> route pattern",
+      "steps": [
+        {"name": "detect", "action": "http", "input": {"method": "POST", "url": "http://service/detect", "body": {}}},
+        {"name": "classify", "action": "http", "input": {"method": "POST", "url": "http://service/classify", "body": {}}},
+        {"name": "route", "action": "http", "input": {"method": "POST", "url": "http://service/route", "body": {}}}
+      ]
+    }
+  ]
+}

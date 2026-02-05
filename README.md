@@ -77,6 +77,14 @@ policy:
   workflow_schema: "/path/to/your/schema.json"
 ```
 
+Step schema example:
+- `schema/steps.schema.json`
+
+## Template Pack
+
+Generic template pack lives at:
+- `templates/templates.json`
+
 ## Versioning + Rollback
 
 Endpoints:

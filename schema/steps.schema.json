@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Workflow Step",
+  "type": "object",
+  "required": ["name", "action"],
+  "properties": {
+    "id": {"type": "string"},
+    "name": {"type": "string", "minLength": 1},
+    "action": {"type": "string", "minLength": 1},
+    "requires_approval": {"type": "boolean"},
+    "retry": {
+      "type": "object",
+      "properties": {
+        "max": {"type": "integer", "minimum": 0},
+        "backoff_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "input": {
+      "type": "object",
+      "description": "Action-specific input payload"
+    }
+  }
+}
