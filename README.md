@@ -68,6 +68,15 @@ Each step may include:
 ## Validation
 HTTP steps require `http/https` URLs. Other schema validation is minimal by design.
 
+## JSON Schema
+
+Default schema lives at `schema/workflow.schema.json`.
+To override:
+```yaml
+policy:
+  workflow_schema: "/path/to/your/schema.json"
+```
+
 ## Versioning + Rollback
 
 Endpoints:
@@ -83,6 +92,7 @@ Payload:
 
 - `GET /v1/runs/{id}/logs`
 - `POST /v1/runs/{id}/logs` (raw text body)
+- `GET /v1/runs/{id}/logs/stream` (SSE)
 
 ## Persistence
 If `database.dsn` is set, workflows and runs are stored in Postgres.

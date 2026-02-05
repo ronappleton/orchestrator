@@ -15,4 +15,4 @@ audit_log:
 
 policy:
   require_approval: false
-  workflow_schema: ""
+  workflow_schema: "schema/workflow.schema.json"
