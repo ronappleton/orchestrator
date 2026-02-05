@@ -123,3 +123,6 @@ go build -o bin/orchestrator ./cmd/orchestrator
 ## Step Actions
 - `notify` -> POST to notification-service `/v1/notify`
 - `workspace.check` -> GET from workspace-service `/v1/workspaces/{id}`
+
+## Events
+Run and step events are also published to event-bus when configured.

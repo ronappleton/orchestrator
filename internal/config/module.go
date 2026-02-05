@@ -15,6 +15,7 @@ type Config struct {
 	AuditLog     EndpointConfig `yaml:"audit_log"`
 	Notification EndpointConfig `yaml:"notification"`
 	Workspace    EndpointConfig `yaml:"workspace"`
+	EventBus     EndpointConfig `yaml:"event_bus"`
 	Policy       PolicyConfig   `yaml:"policy"`
 }
 
@@ -61,6 +62,10 @@ func Default() Config {
 			Timeout: "5s",
 		},
 		Workspace: EndpointConfig{
+			BaseURL: "",
+			Timeout: "5s",
+		},
+		EventBus: EndpointConfig{
 			BaseURL: "",
 			Timeout: "5s",
 		},

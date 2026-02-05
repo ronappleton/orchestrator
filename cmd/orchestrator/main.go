@@ -52,7 +52,11 @@ func workflowModule() fx.Option {
 			return store
 		}),
 		fx.Provide(func(cfg config.Config) *workflow.Notifier {
-			return workflow.NewNotifier(cfg.MemArch.BaseURL, cfg.MemArch.Timeout, cfg.AuditLog.BaseURL, cfg.AuditLog.Timeout)
+			return workflow.NewNotifier(
+				cfg.MemArch.BaseURL, cfg.MemArch.Timeout,
+				cfg.AuditLog.BaseURL, cfg.AuditLog.Timeout,
+				cfg.EventBus.BaseURL, cfg.EventBus.Timeout,
+			)
 		}),
 		fx.Provide(func(store workflow.Store, notify *workflow.Notifier, cfg config.Config) *workflow.Engine {
 			eng := workflow.NewEngine(store, notify, cfg.Notification.BaseURL, cfg.Workspace.BaseURL, cfg.Policy.BaseURL)

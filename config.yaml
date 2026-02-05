@@ -21,6 +21,10 @@ workspace:
   base_url: ""
   timeout: "5s"
 
+event_bus:
+  base_url: "http://event-bus:8111"
+  timeout: "5s"
+
 policy:
   require_approval: false
   workflow_schema: "schema/workflow.schema.json"
