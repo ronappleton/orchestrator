@@ -53,6 +53,18 @@ Currently supported actions (all map to HTTP calls):
 - `memarch.search`
 - `scm.call`
 
+## Persistence
+If `database.dsn` is set, workflows and runs are stored in Postgres.
+
+Example DSN:
+```
+postgres://orchestrator:orchestrator@localhost:5432/orchestrator?sslmode=disable
+```
+
+## Event Hooks
+When `memarch.base_url` or `audit_log.base_url` are set, the orchestrator emits
+run/step events to those endpoints.
+
 ## Running
 ```bash
 go build -o bin/orchestrator ./cmd/orchestrator

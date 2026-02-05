@@ -9,21 +9,44 @@ import (
 )
 
 type Config struct {
-    Server ServerConfig `yaml:"server"`
+	Server ServerConfig `yaml:"server"`
+	Database DatabaseConfig `yaml:"database"`
+	MemArch  EndpointConfig `yaml:"memarch"`
+	AuditLog EndpointConfig `yaml:"audit_log"`
 }
 
 type ServerConfig struct {
-    Host string `yaml:"host"`
-    Port int    `yaml:"port"`
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
+}
+
+type DatabaseConfig struct {
+	DSN string `yaml:"dsn"`
+}
+
+type EndpointConfig struct {
+	BaseURL string `yaml:"base_url"`
+	Timeout string `yaml:"timeout"`
 }
 
 func Default() Config {
-    return Config{
-        Server: ServerConfig{
-            Host: "0.0.0.0",
-            Port: 8100,
-        },
-    }
+	return Config{
+		Server: ServerConfig{
+			Host: "0.0.0.0",
+			Port: 8100,
+		},
+		Database: DatabaseConfig{
+			DSN: "",
+		},
+		MemArch: EndpointConfig{
+			BaseURL: "",
+			Timeout: "5s",
+		},
+		AuditLog: EndpointConfig{
+			BaseURL: "",
+			Timeout: "5s",
+		},
+	}
 }
 
 func Load(path string) (Config, error) {

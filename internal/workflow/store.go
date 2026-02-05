@@ -8,27 +8,36 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-type Store struct {
+type Store interface {
+	CreateWorkflow(w Workflow) Workflow
+	ListWorkflows() []Workflow
+	GetWorkflow(id string) (Workflow, error)
+	CreateRun(r Run) Run
+	UpdateRun(r Run)
+	GetRun(id string) (Run, error)
+}
+
+type MemoryStore struct {
 	mu        sync.RWMutex
 	workflows map[string]Workflow
 	runs      map[string]Run
 }
 
-func NewStore() *Store {
-	return &Store{
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{
 		workflows: map[string]Workflow{},
 		runs:      map[string]Run{},
 	}
 }
 
-func (s *Store) CreateWorkflow(w Workflow) Workflow {
+func (s *MemoryStore) CreateWorkflow(w Workflow) Workflow {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.workflows[w.ID] = w
 	return w
 }
 
-func (s *Store) ListWorkflows() []Workflow {
+func (s *MemoryStore) ListWorkflows() []Workflow {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]Workflow, 0, len(s.workflows))
@@ -38,7 +47,7 @@ func (s *Store) ListWorkflows() []Workflow {
 	return out
 }
 
-func (s *Store) GetWorkflow(id string) (Workflow, error) {
+func (s *MemoryStore) GetWorkflow(id string) (Workflow, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	w, ok := s.workflows[id]
@@ -48,21 +57,21 @@ func (s *Store) GetWorkflow(id string) (Workflow, error) {
 	return w, nil
 }
 
-func (s *Store) CreateRun(r Run) Run {
+func (s *MemoryStore) CreateRun(r Run) Run {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.runs[r.ID] = r
 	return r
 }
 
-func (s *Store) UpdateRun(r Run) {
+func (s *MemoryStore) UpdateRun(r Run) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r.UpdatedAt = time.Now().UTC()
 	s.runs[r.ID] = r
 }
 
-func (s *Store) GetRun(id string) (Run, error) {
+func (s *MemoryStore) GetRun(id string) (Run, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	r, ok := s.runs[id]

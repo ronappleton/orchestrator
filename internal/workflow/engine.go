@@ -12,14 +12,16 @@ import (
 )
 
 type Engine struct {
-	store  *Store
+	store  Store
 	client *http.Client
+	notify *Notifier
 }
 
-func NewEngine(store *Store) *Engine {
+func NewEngine(store Store, notify *Notifier) *Engine {
 	return &Engine{
 		store:  store,
 		client: &http.Client{Timeout: 30 * time.Second},
+		notify: notify,
 	}
 }
 
@@ -35,6 +37,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 
 	run.Status = StatusRunning
 	e.store.UpdateRun(run)
+	e.notify.RunEvent(run, "run.started", "")
 
 	workflow, err := e.store.GetWorkflow(run.WorkflowID)
 	if err != nil {
@@ -66,6 +69,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 				Status: StatusWaitingApproval,
 			})
 			e.store.UpdateRun(run)
+			e.notify.RunEvent(run, "run.waiting_approval", step.Name)
 			return
 		}
 
@@ -78,6 +82,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 			run.Status = StatusFailed
 			run.CurrentStep = i
 			e.store.UpdateRun(run)
+			e.notify.StepEvent(run, stepRun, "step.failed")
 			return
 		}
 		stepRun.Status = StatusSucceeded
@@ -86,10 +91,12 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 		run.Steps = append(run.Steps, stepRun)
 		run.CurrentStep = i + 1
 		e.store.UpdateRun(run)
+		e.notify.StepEvent(run, stepRun, "step.succeeded")
 	}
 
 	run.Status = StatusSucceeded
 	e.store.UpdateRun(run)
+	e.notify.RunEvent(run, "run.succeeded", "")
 }
 
 func (e *Engine) executeStep(ctx context.Context, step Step) (string, int, error) {

@@ -6,11 +6,11 @@ import (
 )
 
 type Service struct {
-	store  *Store
+	store  Store
 	engine *Engine
 }
 
-func NewService(store *Store, engine *Engine) *Service {
+func NewService(store Store, engine *Engine) *Service {
 	return &Service{store: store, engine: engine}
 }
 

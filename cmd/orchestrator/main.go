@@ -41,9 +41,23 @@ func startServer(configPath string) {
 
 func workflowModule() fx.Option {
 	return fx.Options(
-		fx.Provide(func() *workflow.Store { return workflow.NewStore() }),
-		fx.Provide(func(store *workflow.Store) *workflow.Engine { return workflow.NewEngine(store) }),
-		fx.Provide(func(store *workflow.Store, engine *workflow.Engine) *workflow.Service {
+		fx.Provide(func(cfg config.Config) workflow.Store {
+			if cfg.Database.DSN == "" {
+				return workflow.NewMemoryStore()
+			}
+			store, err := workflow.NewPGStore(cfg.Database.DSN)
+			if err != nil {
+				return workflow.NewMemoryStore()
+			}
+			return store
+		}),
+		fx.Provide(func(cfg config.Config) *workflow.Notifier {
+			return workflow.NewNotifier(cfg.MemArch.BaseURL, cfg.MemArch.Timeout, cfg.AuditLog.BaseURL, cfg.AuditLog.Timeout)
+		}),
+		fx.Provide(func(store workflow.Store, notify *workflow.Notifier) *workflow.Engine {
+			return workflow.NewEngine(store, notify)
+		}),
+		fx.Provide(func(store workflow.Store, engine *workflow.Engine) *workflow.Service {
 			return workflow.NewService(store, engine)
 		}),
 	)
