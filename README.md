@@ -119,3 +119,7 @@ run/step events to those endpoints.
 go build -o bin/orchestrator ./cmd/orchestrator
 ./bin/orchestrator -config config.yaml
 ```
+
+## Step Actions
+- `notify` -> POST to notification-service `/v1/notify`
+- `workspace.check` -> GET from workspace-service `/v1/workspaces/{id}`

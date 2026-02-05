@@ -13,6 +13,14 @@ audit_log:
   base_url: ""
   timeout: "5s"
 
+notification:
+  base_url: ""
+  timeout: "5s"
+
+workspace:
+  base_url: ""
+  timeout: "5s"
+
 policy:
   require_approval: false
   workflow_schema: "schema/workflow.schema.json"

@@ -55,7 +55,7 @@ func workflowModule() fx.Option {
 			return workflow.NewNotifier(cfg.MemArch.BaseURL, cfg.MemArch.Timeout, cfg.AuditLog.BaseURL, cfg.AuditLog.Timeout)
 		}),
 		fx.Provide(func(store workflow.Store, notify *workflow.Notifier, cfg config.Config) *workflow.Engine {
-			eng := workflow.NewEngine(store, notify)
+			eng := workflow.NewEngine(store, notify, cfg.Notification.BaseURL, cfg.Workspace.BaseURL)
 			eng.SetPolicyRequiresApproval(cfg.Policy.RequireApproval)
 			return eng
 		}),

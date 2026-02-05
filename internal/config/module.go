@@ -13,6 +13,8 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	MemArch  EndpointConfig `yaml:"memarch"`
 	AuditLog EndpointConfig `yaml:"audit_log"`
+	Notification EndpointConfig `yaml:"notification"`
+	Workspace EndpointConfig `yaml:"workspace"`
 	Policy PolicyConfig `yaml:"policy"`
 }
 
@@ -49,6 +51,14 @@ func Default() Config {
 			Timeout: "5s",
 		},
 		AuditLog: EndpointConfig{
+			BaseURL: "",
+			Timeout: "5s",
+		},
+		Notification: EndpointConfig{
+			BaseURL: "",
+			Timeout: "5s",
+		},
+		Workspace: EndpointConfig{
 			BaseURL: "",
 			Timeout: "5s",
 		},
