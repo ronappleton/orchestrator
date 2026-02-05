@@ -32,6 +32,7 @@ type EndpointConfig struct {
 
 type PolicyConfig struct {
 	RequireApproval bool `yaml:"require_approval"`
+	WorkflowSchema  string `yaml:"workflow_schema"`
 }
 
 func Default() Config {
@@ -53,6 +54,7 @@ func Default() Config {
 		},
 		Policy: PolicyConfig{
 			RequireApproval: false,
+			WorkflowSchema:  "",
 		},
 	}
 }

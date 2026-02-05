@@ -15,18 +15,22 @@ type Store interface {
 	CreateRun(r Run) Run
 	UpdateRun(r Run)
 	GetRun(id string) (Run, error)
+	AppendLog(runID string, msg string)
+	ListLogs(runID string) []string
 }
 
 type MemoryStore struct {
 	mu        sync.RWMutex
 	workflows map[string]Workflow
 	runs      map[string]Run
+	logs      map[string][]string
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		workflows: map[string]Workflow{},
 		runs:      map[string]Run{},
+		logs:      map[string][]string{},
 	}
 }
 
@@ -79,4 +83,16 @@ func (s *MemoryStore) GetRun(id string) (Run, error) {
 		return Run{}, ErrNotFound
 	}
 	return r, nil
+}
+
+func (s *MemoryStore) AppendLog(runID string, msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logs[runID] = append(s.logs[runID], msg)
+}
+
+func (s *MemoryStore) ListLogs(runID string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]string(nil), s.logs[runID]...)
 }

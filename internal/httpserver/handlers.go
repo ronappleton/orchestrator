@@ -41,6 +41,10 @@ func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "name and steps required", http.StatusBadRequest)
 			return
 		}
+		if err := workflow.ValidateAgainstSchema(s.cfg.Policy.WorkflowSchema, wf); err != nil {
+			http.Error(w, "schema validation failed", http.StatusBadRequest)
+			return
+		}
 		wf = s.wf.CreateWorkflow(wf)
 		writeJSON(w, wf)
 	case http.MethodGet:
@@ -49,6 +53,56 @@ func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) handleWorkflowVersionRoutes(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/versions") {
+		s.handleWorkflowVersions(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/rollback") {
+		s.handleWorkflowRollback(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func (s *Server) handleWorkflowVersions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/v1/workflows/")
+	id = strings.TrimSuffix(id, "/versions")
+	if id == "" {
+		http.Error(w, "workflow id required", http.StatusBadRequest)
+		return
+	}
+	versions := workflow.ListVersions(id)
+	writeJSON(w, map[string]any{"items": versions})
+}
+
+func (s *Server) handleWorkflowRollback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/v1/workflows/")
+	id = strings.TrimSuffix(id, "/rollback")
+	var body struct {
+		Version int `json:"version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	wf, err := workflow.RollbackVersion(id, body.Version)
+	if err != nil {
+		http.Error(w, "version not found", http.StatusNotFound)
+		return
+	}
+	wf = s.wf.CreateWorkflow(wf)
+	writeJSON(w, wf)
 }
 
 func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +166,11 @@ func (s *Server) handleRunByID(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		if action == "logs" {
+			logs := s.wf.ListLogs(id)
+			writeJSON(w, map[string]any{"items": logs})
+			return
+		}
 		run, err := s.wf.GetRun(id)
 		if err != nil {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -134,6 +193,14 @@ func (s *Server) handleRunByID(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			writeJSON(w, run)
+		case "logs":
+			body := readBody(r)
+			if len(body) == 0 {
+				http.Error(w, "message required", http.StatusBadRequest)
+				return
+			}
+			s.wf.AppendLog(id, string(body))
+			writeJSON(w, map[string]any{"ok": true})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

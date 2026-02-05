@@ -48,6 +48,12 @@ create table if not exists orchestrator_runs (
   created_at timestamptz not null,
   updated_at timestamptz not null
 );
+create table if not exists orchestrator_run_logs (
+  id bigserial primary key,
+  run_id text not null,
+  message text not null,
+  created_at timestamptz not null
+);
 `)
 	return err
 }
@@ -126,4 +132,26 @@ func (s *PGStore) GetRun(id string) (Run, error) {
 		return Run{}, err
 	}
 	return r, nil
+}
+
+func (s *PGStore) AppendLog(runID string, msg string) {
+	_, _ = s.db.Exec(`insert into orchestrator_run_logs (run_id, message, created_at) values ($1,$2,$3)`,
+		runID, msg, time.Now().UTC())
+}
+
+func (s *PGStore) ListLogs(runID string) []string {
+	rows, err := s.db.Query(`select message from orchestrator_run_logs where run_id=$1 order by id asc`, runID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var msg string
+		if err := rows.Scan(&msg); err != nil {
+			continue
+		}
+		out = append(out, msg)
+	}
+	return out
 }

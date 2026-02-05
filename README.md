@@ -68,6 +68,22 @@ Each step may include:
 ## Validation
 HTTP steps require `http/https` URLs. Other schema validation is minimal by design.
 
+## Versioning + Rollback
+
+Endpoints:
+- `GET /v1/workflows/{id}/versions`
+- `POST /v1/workflows/{id}/rollback`
+
+Payload:
+```json
+{"version": 1}
+```
+
+## Run Logs
+
+- `GET /v1/runs/{id}/logs`
+- `POST /v1/runs/{id}/logs` (raw text body)
+
 ## Persistence
 If `database.dsn` is set, workflows and runs are stored in Postgres.
 

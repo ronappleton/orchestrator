@@ -42,6 +42,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 
 	run.Status = StatusRunning
 	e.store.UpdateRun(run)
+	e.store.AppendLog(run.ID, "run started")
 	e.notify.RunEvent(run, "run.started", "")
 
 	workflow, err := e.store.GetWorkflow(run.WorkflowID)
@@ -74,6 +75,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 				Status: StatusWaitingApproval,
 			})
 			e.store.UpdateRun(run)
+			e.store.AppendLog(run.ID, "waiting approval for step: "+step.Name)
 			e.notify.RunEvent(run, "run.waiting_approval", step.Name)
 			return
 		}
@@ -87,6 +89,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 			run.Status = StatusFailed
 			run.CurrentStep = i
 			e.store.UpdateRun(run)
+			e.store.AppendLog(run.ID, "step failed: "+step.Name+" err="+err.Error())
 			e.notify.StepEvent(run, stepRun, "step.failed")
 			return
 		}
@@ -96,10 +99,12 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 		run.Steps = append(run.Steps, stepRun)
 		run.CurrentStep = i + 1
 		e.store.UpdateRun(run)
+		e.store.AppendLog(run.ID, "step succeeded: "+step.Name)
 		e.notify.StepEvent(run, stepRun, "step.succeeded")
 		if stop {
 			run.Status = StatusSucceeded
 			e.store.UpdateRun(run)
+			e.store.AppendLog(run.ID, "run stopped by condition")
 			e.notify.RunEvent(run, "run.succeeded", "stopped by condition")
 			return
 		}
@@ -107,6 +112,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 
 	run.Status = StatusSucceeded
 	e.store.UpdateRun(run)
+	e.store.AppendLog(run.ID, "run succeeded")
 	e.notify.RunEvent(run, "run.succeeded", "")
 }
 

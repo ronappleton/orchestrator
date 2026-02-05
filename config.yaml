@@ -15,3 +15,4 @@ audit_log:
 
 policy:
   require_approval: false
+  workflow_schema: ""

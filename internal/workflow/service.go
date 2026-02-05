@@ -26,6 +26,7 @@ func (s *Service) CreateWorkflow(w Workflow) Workflow {
 			w.Steps[i].ID = newID("step")
 		}
 	}
+	saveVersion(w)
 	return s.store.CreateWorkflow(w)
 }
 
@@ -59,6 +60,14 @@ func (s *Service) StartRun(ctx context.Context, workflowID string, context map[s
 
 func (s *Service) GetRun(id string) (Run, error) {
 	return s.store.GetRun(id)
+}
+
+func (s *Service) AppendLog(id string, msg string) {
+	s.store.AppendLog(id, msg)
+}
+
+func (s *Service) ListLogs(id string) []string {
+	return s.store.ListLogs(id)
 }
 
 func (s *Service) ApproveRun(ctx context.Context, id string) (Run, error) {

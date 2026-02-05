@@ -34,6 +34,7 @@ func NewServer(cfg config.Config, logger *zap.Logger, wf *workflow.Service) *Ser
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/v1/workflows", s.handleWorkflows)
+	mux.HandleFunc("/v1/workflows/", s.handleWorkflowVersionRoutes)
 	mux.HandleFunc("/v1/templates", s.handleTemplates)
 	mux.HandleFunc("/v1/runs", s.handleRuns)
 	mux.HandleFunc("/v1/runs/", s.handleRunByID)
