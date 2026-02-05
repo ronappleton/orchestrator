@@ -78,7 +78,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 			return
 		}
 
-		out, code, stop, err := e.executeStep(ctx, run, step)
+		out, code, stop, err := e.executeStepWithRetry(ctx, run, step)
 		if err != nil {
 			stepRun.Status = StatusFailed
 			stepRun.Error = err.Error()
@@ -108,6 +108,29 @@ func (e *Engine) Execute(ctx context.Context, runID string) {
 	run.Status = StatusSucceeded
 	e.store.UpdateRun(run)
 	e.notify.RunEvent(run, "run.succeeded", "")
+}
+
+func (e *Engine) executeStepWithRetry(ctx context.Context, run Run, step Step) (string, int, bool, error) {
+	attempts := 0
+	max := step.Retry.Max
+	if max < 0 {
+		max = 0
+	}
+	for {
+		out, code, stop, err := e.executeStep(ctx, run, step)
+		if err == nil {
+			return out, code, stop, nil
+		}
+		if attempts >= max {
+			return out, code, stop, err
+		}
+		backoff := time.Duration(step.Retry.BackoffMs) * time.Millisecond
+		if backoff <= 0 {
+			backoff = 250 * time.Millisecond
+		}
+		time.Sleep(backoff)
+		attempts++
+	}
 }
 
 func (e *Engine) executeStep(ctx context.Context, run Run, step Step) (string, int, bool, error) {
@@ -143,6 +166,9 @@ func (e *Engine) executeHTTP(ctx context.Context, step Step) (string, int, error
 	if strings.TrimSpace(in.URL) == "" {
 		return "", 0, fmt.Errorf("missing url")
 	}
+	if err := validateHTTPInput(in); err != nil {
+		return "", 0, err
+	}
 
 	var body io.Reader
 	if len(in.Body) > 0 {
@@ -170,6 +196,13 @@ func (e *Engine) executeHTTP(ctx context.Context, step Step) (string, int, error
 		return string(b), resp.StatusCode, fmt.Errorf("http status %d", resp.StatusCode)
 	}
 	return string(b), resp.StatusCode, nil
+}
+
+func validateHTTPInput(in httpInput) error {
+	if !strings.HasPrefix(strings.ToLower(in.URL), "http") {
+		return fmt.Errorf("url must be http or https")
+	}
+	return nil
 }
 
 func (e *Engine) executeTransform(run Run, step Step) (string, int, bool, error) {

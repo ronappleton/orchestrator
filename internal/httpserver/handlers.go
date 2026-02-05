@@ -52,11 +52,24 @@ func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]any{"items": workflow.BuiltinTemplates})
+	case http.MethodPost:
+		var wf workflow.Workflow
+		if err := json.NewDecoder(r.Body).Decode(&wf); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(wf.Name) == "" || len(wf.Steps) == 0 {
+			http.Error(w, "name and steps required", http.StatusBadRequest)
+			return
+		}
+		wf = s.wf.CreateWorkflow(wf)
+		writeJSON(w, wf)
+	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
 	}
-	writeJSON(w, map[string]any{"items": workflow.BuiltinTemplates})
 }
 
 func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {

@@ -28,7 +28,7 @@ var BuiltinTemplates = []Workflow{
 		Description: "Generic review -> approval gate -> execute",
 		Steps: []Step{
 			{Name: "review", Action: "http", Input: map[string]any{"method": "POST", "url": "http://service/review", "body": map[string]any{}}},
-			{Name: "approval", Action: "condition", Input: map[string]any{"key": "approved", "equals": true, "on_false": "stop"}},
+			{Name: "approval", Action: "condition", Input: map[string]any{"key": "approved", "equals": true, "on_false": "stop"}, RequiresApproval: true},
 			{Name: "execute", Action: "http", Input: map[string]any{"method": "POST", "url": "http://service/execute", "body": map[string]any{}}},
 		},
 	},

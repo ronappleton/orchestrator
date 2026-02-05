@@ -43,6 +43,10 @@ Workflow engine for multi-step jobs, retries, approvals, and state transitions.
 - `POST /v1/runs/{id}/cancel`
 - `GET /v1/runs/{id}`
 
+### Templates
+- `GET /v1/templates`
+- `POST /v1/templates`
+
 ## Step Actions
 Currently supported actions (all map to HTTP calls):
 - `http`
@@ -52,6 +56,17 @@ Currently supported actions (all map to HTTP calls):
 - `memarch.store_fact`
 - `memarch.search`
 - `scm.call`
+- `transform`
+- `condition`
+
+## Retries
+Each step may include:
+```json
+"retry": {"max": 2, "backoff_ms": 500}
+```
+
+## Validation
+HTTP steps require `http/https` URLs. Other schema validation is minimal by design.
 
 ## Persistence
 If `database.dsn` is set, workflows and runs are stored in Postgres.
