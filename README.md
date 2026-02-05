@@ -2,6 +2,13 @@
 
 Workflow engine for multi-step jobs, retries, approvals, and state transitions.
 
+
+## Responsibility
+Multi-step workflow execution with approvals and state transitions.
+
+## Not Responsibility
+Not a scheduler; job-scheduler handles deferred/repeated timing.
+
 ## API
 
 ### Create workflow
