@@ -3,11 +3,14 @@ package main
 import (
 	"os"
 
+	"context"
+
 	"github.com/ronappleton/orchestrator/internal/cli"
 	"github.com/ronappleton/orchestrator/internal/config"
 	"github.com/ronappleton/orchestrator/internal/httpserver"
 	"github.com/ronappleton/orchestrator/internal/logging"
 	"github.com/ronappleton/orchestrator/internal/metrics"
+	"github.com/ronappleton/orchestrator/internal/otel"
 	"github.com/ronappleton/orchestrator/internal/workflow"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
@@ -28,6 +31,11 @@ func main() {
 }
 
 func startServer(configPath string) {
+	shutdown, err := otel.Init("orchestrator")
+	if err == nil {
+		defer shutdown(context.Background())
+	}
+
 	app := fx.New(
 		config.Module(configPath),
 		logging.Module(),

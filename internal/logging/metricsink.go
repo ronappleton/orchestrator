@@ -2,6 +2,7 @@ package logging
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -74,11 +75,15 @@ func (s *metricSender) start() {
 
 func (s *metricSender) sendLog(payload metricPayload) {
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/v1/logs", bytes.NewReader(body))
+	reader, enc := compressBody(body)
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/v1/logs", reader)
 	if err != nil {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if enc != "" {
+		req.Header.Set("Content-Encoding", enc)
+	}
 	if s.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+s.apiKey)
 	}
@@ -133,11 +138,15 @@ func (s *metricSender) flushMetrics() {
 		"source":  s.source,
 		"metrics": points,
 	})
-	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/v1/metrics", bytes.NewReader(body))
+	reader, enc := compressBody(body)
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/v1/metrics", reader)
 	if err != nil {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if enc != "" {
+		req.Header.Set("Content-Encoding", enc)
+	}
 	if s.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+s.apiKey)
 	}
@@ -258,4 +267,15 @@ func mergeLabels(base map[string]string, extra map[string]string) map[string]str
 		merged[k] = v
 	}
 	return merged
+}
+
+func compressBody(payload []byte) (*bytes.Reader, string) {
+	if os.Getenv("METRIC_SERVICE_COMPRESS") == "false" {
+		return bytes.NewReader(payload), ""
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, _ = gz.Write(payload)
+	_ = gz.Close()
+	return bytes.NewReader(buf.Bytes()), "gzip"
 }
