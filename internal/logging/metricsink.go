@@ -32,17 +32,21 @@ type metricSender struct {
 	baseURL string
 	apiKey  string
 	source  string
+	env     string
+	tags    string
 	client  *http.Client
 	ch      chan metricPayload
 	mu      sync.Mutex
 	counts  map[string]int
 }
 
-func newMetricSender(baseURL string, apiKey string, source string) *metricSender {
+func newMetricSender(baseURL string, apiKey string, source string, env string, tags string) *metricSender {
 	return &metricSender{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		source:  source,
+		env:     env,
+		tags:    tags,
 		client:  &http.Client{Timeout: 3 * time.Second},
 		ch:      make(chan metricPayload, 200),
 		counts:  map[string]int{},
@@ -99,10 +103,18 @@ func (s *metricSender) flushMetrics() {
 	s.mu.Unlock()
 
 	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	baseLabels := map[string]string{}
+	if s.env != "" {
+		baseLabels["env"] = s.env
+	}
+	if s.tags != "" {
+		baseLabels["tags"] = s.tags
+	}
+
 	points := []metricPoint{{
 		Name:      "service_heartbeat",
 		Value:     1,
-		Labels:    map[string]string{"component": "log_sink"},
+		Labels:    mergeLabels(baseLabels, map[string]string{"component": "log_sink"}),
 		Timestamp: ts,
 	}}
 	for level, count := range counts {
@@ -112,7 +124,7 @@ func (s *metricSender) flushMetrics() {
 		points = append(points, metricPoint{
 			Name:      "log_count_total",
 			Value:     float64(count),
-			Labels:    map[string]string{"level": level},
+			Labels:    mergeLabels(baseLabels, map[string]string{"level": level}),
 			Timestamp: ts,
 		})
 	}
@@ -142,7 +154,9 @@ func attachMetricSink(logger *zap.Logger) *zap.Logger {
 	if source == "" {
 		source = filepathBase(os.Args[0])
 	}
-	sender := newMetricSender(baseURL, apiKey, source)
+	env := os.Getenv("METRIC_SERVICE_ENV")
+	tags := normalizeTags(os.Getenv("METRIC_SERVICE_TAGS"))
+	sender := newMetricSender(baseURL, apiKey, source, env, tags)
 	sender.start()
 	sink := &metricCore{
 		level:  zapcore.InfoLevel,
@@ -188,6 +202,12 @@ func (c *metricCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	for k, v := range enc.Fields {
 		metadata[k] = fmt.Sprint(v)
 	}
+	if c.sender.env != "" {
+		metadata["env"] = c.sender.env
+	}
+	if c.sender.tags != "" {
+		metadata["tags"] = c.sender.tags
+	}
 	payload := metricPayload{
 		Source:   c.sender.source,
 		Level:    entry.Level.String(),
@@ -209,4 +229,33 @@ func filepathBase(input string) string {
 		return input
 	}
 	return input[idx+1:]
+}
+
+func normalizeTags(tags string) string {
+	if tags == "" {
+		return ""
+	}
+	parts := strings.Split(tags, ",")
+	cleaned := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			cleaned = append(cleaned, t)
+		}
+	}
+	return strings.Join(cleaned, ",")
+}
+
+func mergeLabels(base map[string]string, extra map[string]string) map[string]string {
+	if len(base) == 0 {
+		return extra
+	}
+	merged := map[string]string{}
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range extra {
+		merged[k] = v
+	}
+	return merged
 }
