@@ -31,7 +31,6 @@ func NewServer(cfg config.Config, logger *zap.Logger, wf *workflow.Service) *Ser
 	s := &Server{cfg: cfg, logger: logger, wf: wf}
 
 	mux.HandleFunc("/healthz", s.handleHealth)
-	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/docs", s.handleDocs)
 	mux.HandleFunc("/v1/workflows", s.handleWorkflows)
 	mux.HandleFunc("/v1/workflows/", s.handleWorkflowVersionRoutes)
