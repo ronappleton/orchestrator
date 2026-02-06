@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"time"
 
 	"github.com/ronappleton/orchestrator/internal/config"
@@ -41,7 +43,7 @@ func NewServer(cfg config.Config, logger *zap.Logger, wf *workflow.Service) *Ser
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           otelhttp.NewHandler(mux, "http"),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

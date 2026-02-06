@@ -2,9 +2,11 @@ package otel
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -38,7 +40,20 @@ func Init(serviceName string) (func(context.Context) error, error) {
 	if tags := os.Getenv("METRIC_SERVICE_TAGS"); tags != "" {
 		attrs = append(attrs, attribute.String("service.tags", tags))
 	}
-	res, _ := resource.New(ctx, resource.WithAttributes(attrs...))
+	if version := firstNonEmpty(os.Getenv("APP_VERSION"), os.Getenv("GIT_SHA")); version != "" {
+		attrs = append(attrs, attribute.String("service.version", version))
+	}
+	if instance := os.Getenv("HOSTNAME"); instance != "" {
+		attrs = append(attrs, attribute.String("service.instance.id", instance))
+	}
+
+	res, _ := resource.New(ctx,
+		resource.WithFromEnv(),
+		resource.WithProcess(),
+		resource.WithOS(),
+		resource.WithHost(),
+		resource.WithAttributes(attrs...),
+	)
 
 	tp := trace.NewTracerProvider(trace.WithBatcher(traceExp), trace.WithResource(res))
 	mp := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(metricExp, metric.WithInterval(15*time.Second))), metric.WithResource(res))
@@ -47,8 +62,21 @@ func Init(serviceName string) (func(context.Context) error, error) {
 	otel.SetMeterProvider(mp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		http.DefaultTransport = otelhttp.NewTransport(base)
+	}
+
 	return func(ctx context.Context) error {
 		_ = mp.Shutdown(ctx)
 		return tp.Shutdown(ctx)
 	}, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
