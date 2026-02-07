@@ -9,7 +9,6 @@ import (
 )
 
 type Config struct {
-	Server       ServerConfig   `yaml:"server"`
 	Database     DatabaseConfig `yaml:"database"`
 	MemArch      EndpointConfig `yaml:"memarch"`
 	AuditLog     EndpointConfig `yaml:"audit_log"`
@@ -17,11 +16,6 @@ type Config struct {
 	Workspace    EndpointConfig `yaml:"workspace"`
 	EventBus     EndpointConfig `yaml:"event_bus"`
 	Policy       PolicyConfig   `yaml:"policy"`
-}
-
-type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
 }
 
 type DatabaseConfig struct {
@@ -44,10 +38,6 @@ type PolicyConfig struct {
 
 func Default() Config {
 	return Config{
-		Server: ServerConfig{
-			Host: "0.0.0.0",
-			Port: 8100,
-		},
 		Database: DatabaseConfig{
 			DSN: "",
 		},
