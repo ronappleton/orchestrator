@@ -14,6 +14,5 @@ func NewLogger() (*zap.Logger, error) {
 	if err != nil {
 		return zap.NewNop(), nil
 	}
-	logger = attachMetricSink(logger)
 	return logger, nil
 }
