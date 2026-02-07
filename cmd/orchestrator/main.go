@@ -7,7 +7,6 @@ import (
 
 	"github.com/ronappleton/orchestrator/internal/cli"
 	"github.com/ronappleton/orchestrator/internal/config"
-	"github.com/ronappleton/orchestrator/internal/httpserver"
 	"github.com/ronappleton/orchestrator/internal/logging"
 	"github.com/ronappleton/orchestrator/internal/metrics"
 	"github.com/ronappleton/orchestrator/internal/otel"
@@ -41,7 +40,6 @@ func startServer(configPath string) {
 		logging.Module(),
 		metrics.Module(),
 		workflowModule(),
-		httpserver.Module(),
 	)
 
 	app.Run()
