@@ -22,13 +22,13 @@ workspace:
   timeout: "5s"
 
 event_bus:
-  base_url: "http://event-bus:8111"
+  base_url: ""
   grpc_address: "event-bus:9111"
   timeout: "5s"
 
 policy:
   require_approval: false
   workflow_schema: "schema/workflow.schema.json"
-  base_url: "http://policy-service:8103"
+  base_url: ""
   grpc_address: "policy-service:9103"
   timeout: "5s"

@@ -533,8 +533,12 @@ func (e *Engine) checkPolicyGRPC(ctx context.Context, payload map[string]any) (b
 	if err := e.ensurePolicyClient(ctx); err != nil {
 		return false, "", err
 	}
+	action, _ := payload["action"].(string)
+	if strings.TrimSpace(action) == "" {
+		return false, "", fmt.Errorf("policy.check requires action")
+	}
 	req := &policypb.CheckRequest{
-		Action: payload["action"].(string),
+		Action: action,
 	}
 	if v, ok := payload["channel"].(string); ok {
 		req.Channel = v
@@ -559,15 +563,31 @@ func (e *Engine) executePolicyCheck(ctx context.Context, step Step) (string, int
 	raw, _ := json.Marshal(step.Input)
 	_ = json.Unmarshal(raw, &input)
 
+	bodyRaw, _ := input["body"]
+	if body, ok := bodyRaw.(map[string]any); ok {
+		input = body
+	}
+
+	if e.policyGRPCAddr != "" {
+		allowed, reason, err := e.checkPolicyGRPC(ctx, input)
+		if err != nil {
+			return "", 0, err
+		}
+		resp := map[string]any{
+			"allowed": allowed,
+			"reason":  reason,
+		}
+		encoded, _ := json.Marshal(resp)
+		return string(encoded), http.StatusOK, nil
+	}
+
 	url, _ := input["url"].(string)
 	method, _ := input["method"].(string)
 	if method == "" {
 		method = http.MethodPost
 	}
-	bodyRaw, _ := input["body"]
-
 	if strings.TrimSpace(url) == "" {
-		return "", 0, fmt.Errorf("policy.check requires url")
+		return "", 0, fmt.Errorf("policy.check requires url or policy grpc address")
 	}
 	payload := map[string]any{
 		"method": method,
