@@ -29,14 +29,16 @@ type DatabaseConfig struct {
 }
 
 type EndpointConfig struct {
-	BaseURL string `yaml:"base_url"`
-	Timeout string `yaml:"timeout"`
+	BaseURL     string `yaml:"base_url"`
+	GRPCAddress string `yaml:"grpc_address"`
+	Timeout     string `yaml:"timeout"`
 }
 
 type PolicyConfig struct {
 	RequireApproval bool   `yaml:"require_approval"`
 	WorkflowSchema  string `yaml:"workflow_schema"`
 	BaseURL         string `yaml:"base_url"`
+	GRPCAddress     string `yaml:"grpc_address"`
 	Timeout         string `yaml:"timeout"`
 }
 
@@ -50,29 +52,35 @@ func Default() Config {
 			DSN: "",
 		},
 		MemArch: EndpointConfig{
-			BaseURL: "",
-			Timeout: "5s",
+			BaseURL:     "",
+			GRPCAddress: "",
+			Timeout:     "5s",
 		},
 		AuditLog: EndpointConfig{
-			BaseURL: "",
-			Timeout: "5s",
+			BaseURL:     "",
+			GRPCAddress: "",
+			Timeout:     "5s",
 		},
 		Notification: EndpointConfig{
-			BaseURL: "",
-			Timeout: "5s",
+			BaseURL:     "",
+			GRPCAddress: "",
+			Timeout:     "5s",
 		},
 		Workspace: EndpointConfig{
-			BaseURL: "",
-			Timeout: "5s",
+			BaseURL:     "",
+			GRPCAddress: "",
+			Timeout:     "5s",
 		},
 		EventBus: EndpointConfig{
-			BaseURL: "",
-			Timeout: "5s",
+			BaseURL:     "",
+			GRPCAddress: "",
+			Timeout:     "5s",
 		},
 		Policy: PolicyConfig{
 			RequireApproval: false,
 			WorkflowSchema:  "",
 			BaseURL:         "",
+			GRPCAddress:     "",
 			Timeout:         "5s",
 		},
 	}

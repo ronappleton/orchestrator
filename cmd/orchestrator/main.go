@@ -61,13 +61,25 @@ func workflowModule() fx.Option {
 		}),
 		fx.Provide(func(cfg config.Config) *workflow.Notifier {
 			return workflow.NewNotifier(
-				cfg.MemArch.BaseURL, cfg.MemArch.Timeout,
-				cfg.AuditLog.BaseURL, cfg.AuditLog.Timeout,
-				cfg.EventBus.BaseURL, cfg.EventBus.Timeout,
+				cfg.MemArch.BaseURL, cfg.MemArch.GRPCAddress, cfg.MemArch.Timeout,
+				cfg.AuditLog.BaseURL, cfg.AuditLog.GRPCAddress, cfg.AuditLog.Timeout,
+				cfg.EventBus.BaseURL, cfg.EventBus.GRPCAddress, cfg.EventBus.Timeout,
 			)
 		}),
 		fx.Provide(func(store workflow.Store, notify *workflow.Notifier, cfg config.Config) *workflow.Engine {
-			eng := workflow.NewEngine(store, notify, cfg.Notification.BaseURL, cfg.Workspace.BaseURL, cfg.Policy.BaseURL)
+			eng := workflow.NewEngine(
+				store,
+				notify,
+				cfg.Notification.BaseURL,
+				cfg.Notification.GRPCAddress,
+				cfg.Notification.Timeout,
+				cfg.Workspace.BaseURL,
+				cfg.Workspace.GRPCAddress,
+				cfg.Workspace.Timeout,
+				cfg.Policy.BaseURL,
+				cfg.Policy.GRPCAddress,
+				cfg.Policy.Timeout,
+			)
 			eng.SetPolicyRequiresApproval(cfg.Policy.RequireApproval)
 			return eng
 		}),

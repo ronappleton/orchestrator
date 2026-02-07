@@ -4,11 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	notifypb "github.com/ronappleton/notification-service/pkg/pb"
+	policypb "github.com/ronappleton/policy-service/pkg/pb"
+	workspacepb "github.com/ronappleton/workspace-service/pkg/pb"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Engine struct {
@@ -18,17 +26,36 @@ type Engine struct {
 	notificationBaseURL    string
 	workspaceBaseURL       string
 	policyBaseURL          string
+	notificationGRPCAddr   string
+	workspaceGRPCAddr      string
+	policyGRPCAddr         string
+	notificationTimeout    time.Duration
+	workspaceTimeout       time.Duration
+	policyTimeout          time.Duration
 	policyRequiresApproval bool
+
+	notificationConn   *grpc.ClientConn
+	notificationClient notifypb.NotificationServiceClient
+	workspaceConn      *grpc.ClientConn
+	workspaceClient    workspacepb.WorkspaceServiceClient
+	policyConn         *grpc.ClientConn
+	policyClient       policypb.PolicyServiceClient
 }
 
-func NewEngine(store Store, notify *Notifier, notificationBaseURL, workspaceBaseURL, policyBaseURL string) *Engine {
+func NewEngine(store Store, notify *Notifier, notificationBaseURL, notificationGRPC, notificationTimeout, workspaceBaseURL, workspaceGRPC, workspaceTimeout, policyBaseURL, policyGRPC, policyTimeout string) *Engine {
 	return &Engine{
-		store:               store,
-		client:              &http.Client{Timeout: 30 * time.Second},
-		notify:              notify,
-		notificationBaseURL: strings.TrimRight(notificationBaseURL, "/"),
-		workspaceBaseURL:    strings.TrimRight(workspaceBaseURL, "/"),
-		policyBaseURL:       strings.TrimRight(policyBaseURL, "/"),
+		store:                store,
+		client:               &http.Client{Timeout: 30 * time.Second},
+		notify:               notify,
+		notificationBaseURL:  strings.TrimRight(notificationBaseURL, "/"),
+		workspaceBaseURL:     strings.TrimRight(workspaceBaseURL, "/"),
+		policyBaseURL:        strings.TrimRight(policyBaseURL, "/"),
+		notificationGRPCAddr: notificationGRPC,
+		workspaceGRPCAddr:    workspaceGRPC,
+		policyGRPCAddr:       policyGRPC,
+		notificationTimeout:  parseTimeout(notificationTimeout),
+		workspaceTimeout:     parseTimeout(workspaceTimeout),
+		policyTimeout:        parseTimeout(policyTimeout),
 	}
 }
 
@@ -235,9 +262,6 @@ type notifyInput struct {
 }
 
 func (e *Engine) executeNotify(ctx context.Context, run Run, step Step) (string, int, error) {
-	if e.notificationBaseURL == "" {
-		return "", 0, fmt.Errorf("notification base_url not configured")
-	}
 	var in notifyInput
 	raw, _ := json.Marshal(step.Input)
 	if err := json.Unmarshal(raw, &in); err != nil {
@@ -248,6 +272,18 @@ func (e *Engine) executeNotify(ctx context.Context, run Run, step Step) (string,
 	}
 	if err := e.ensurePolicyAllows(ctx, "notify", in.Channel, in.To, run, step); err != nil {
 		return "", 0, err
+	}
+	if e.notificationGRPCAddr != "" {
+		resp, err := e.sendNotifyGRPC(ctx, in)
+		if err == nil {
+			return resp, http.StatusOK, nil
+		}
+		if e.notificationBaseURL == "" {
+			return "", 0, err
+		}
+	}
+	if e.notificationBaseURL == "" {
+		return "", 0, fmt.Errorf("notification base_url not configured")
 	}
 	body, _ := json.Marshal(in)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.notificationBaseURL+"/v1/notify", bytes.NewReader(body))
@@ -268,9 +304,6 @@ func (e *Engine) executeNotify(ctx context.Context, run Run, step Step) (string,
 }
 
 func (e *Engine) executeWorkspaceCheck(ctx context.Context, run Run, step Step) (string, int, error) {
-	if e.workspaceBaseURL == "" {
-		return "", 0, fmt.Errorf("workspace base_url not configured")
-	}
 	input := map[string]any{}
 	raw, _ := json.Marshal(step.Input)
 	_ = json.Unmarshal(raw, &input)
@@ -283,6 +316,18 @@ func (e *Engine) executeWorkspaceCheck(ctx context.Context, run Run, step Step) 
 	}
 	if err := e.ensurePolicyAllows(ctx, "workspace.check", "", "", run, step); err != nil {
 		return "", 0, err
+	}
+	if e.workspaceGRPCAddr != "" {
+		resp, err := e.fetchWorkspaceGRPC(ctx, id)
+		if err == nil {
+			return resp, http.StatusOK, nil
+		}
+		if e.workspaceBaseURL == "" {
+			return "", 0, err
+		}
+	}
+	if e.workspaceBaseURL == "" {
+		return "", 0, fmt.Errorf("workspace base_url not configured")
 	}
 	url := e.workspaceBaseURL + "/v1/workspaces/" + id
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -302,9 +347,6 @@ func (e *Engine) executeWorkspaceCheck(ctx context.Context, run Run, step Step) 
 }
 
 func (e *Engine) ensurePolicyAllows(ctx context.Context, action, channel, to string, run Run, step Step) error {
-	if e.policyBaseURL == "" {
-		return nil
-	}
 	payload := map[string]any{
 		"action": action,
 	}
@@ -326,6 +368,22 @@ func (e *Engine) ensurePolicyAllows(ctx context.Context, action, channel, to str
 		if ws, ok := input["workspace_id"].(string); ok && ws != "" {
 			payload["workspace_id"] = ws
 		}
+	}
+	if e.policyGRPCAddr != "" {
+		allowed, reason, err := e.checkPolicyGRPC(ctx, payload)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			if reason == "" {
+				reason = "denied by policy"
+			}
+			return errors.New(reason)
+		}
+		return nil
+	}
+	if e.policyBaseURL == "" {
+		return nil
 	}
 	raw, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.policyBaseURL+"/v1/check", bytes.NewReader(raw))
@@ -352,9 +410,148 @@ func (e *Engine) ensurePolicyAllows(ctx context.Context, action, channel, to str
 		if res.Reason == "" {
 			res.Reason = "denied by policy"
 		}
-		return fmt.Errorf(res.Reason)
+		return errors.New(res.Reason)
 	}
 	return nil
+}
+
+func parseTimeout(raw string) time.Duration {
+	if raw == "" {
+		return 5 * time.Second
+	}
+	dur, err := time.ParseDuration(raw)
+	if err != nil {
+		return 5 * time.Second
+	}
+	return dur
+}
+
+func (e *Engine) ensureNotificationClient(ctx context.Context) error {
+	if e.notificationClient != nil {
+		return nil
+	}
+	conn, err := grpc.DialContext(
+		ctx,
+		e.notificationGRPCAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+	)
+	if err != nil {
+		return err
+	}
+	e.notificationConn = conn
+	e.notificationClient = notifypb.NewNotificationServiceClient(conn)
+	return nil
+}
+
+func (e *Engine) ensureWorkspaceClient(ctx context.Context) error {
+	if e.workspaceClient != nil {
+		return nil
+	}
+	conn, err := grpc.DialContext(
+		ctx,
+		e.workspaceGRPCAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+	)
+	if err != nil {
+		return err
+	}
+	e.workspaceConn = conn
+	e.workspaceClient = workspacepb.NewWorkspaceServiceClient(conn)
+	return nil
+}
+
+func (e *Engine) ensurePolicyClient(ctx context.Context) error {
+	if e.policyClient != nil {
+		return nil
+	}
+	conn, err := grpc.DialContext(
+		ctx,
+		e.policyGRPCAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+	)
+	if err != nil {
+		return err
+	}
+	e.policyConn = conn
+	e.policyClient = policypb.NewPolicyServiceClient(conn)
+	return nil
+}
+
+func (e *Engine) sendNotifyGRPC(ctx context.Context, in notifyInput) (string, error) {
+	if e.notificationGRPCAddr == "" {
+		return "", nil
+	}
+	if err := e.ensureNotificationClient(ctx); err != nil {
+		return "", err
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, e.notificationTimeout)
+	defer cancel()
+	resp, err := e.notificationClient.Notify(rpcCtx, &notifypb.NotifyRequest{
+		Channel:  in.Channel,
+		To:       in.To,
+		Subject:  in.Subject,
+		Body:     in.Body,
+		Metadata: in.Metadata,
+	})
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"id":     resp.GetId(),
+		"status": resp.GetStatus(),
+	})
+	return string(raw), nil
+}
+
+func (e *Engine) fetchWorkspaceGRPC(ctx context.Context, id string) (string, error) {
+	if e.workspaceGRPCAddr == "" {
+		return "", nil
+	}
+	if err := e.ensureWorkspaceClient(ctx); err != nil {
+		return "", err
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, e.workspaceTimeout)
+	defer cancel()
+	resp, err := e.workspaceClient.GetWorkspace(rpcCtx, &workspacepb.GetWorkspaceRequest{Id: id})
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(resp.GetWorkspace())
+	return string(raw), nil
+}
+
+func (e *Engine) checkPolicyGRPC(ctx context.Context, payload map[string]any) (bool, string, error) {
+	if e.policyGRPCAddr == "" {
+		return true, "", nil
+	}
+	if err := e.ensurePolicyClient(ctx); err != nil {
+		return false, "", err
+	}
+	req := &policypb.CheckRequest{
+		Action: payload["action"].(string),
+	}
+	if v, ok := payload["channel"].(string); ok {
+		req.Channel = v
+	}
+	if v, ok := payload["to"].(string); ok {
+		req.To = v
+	}
+	if v, ok := payload["workspace_id"].(string); ok {
+		req.WorkspaceId = v
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, e.policyTimeout)
+	defer cancel()
+	resp, err := e.policyClient.Check(rpcCtx, req)
+	if err != nil {
+		return false, "", err
+	}
+	return resp.GetAllowed(), resp.GetReason(), nil
 }
 
 func (e *Engine) executePolicyCheck(ctx context.Context, step Step) (string, int, error) {

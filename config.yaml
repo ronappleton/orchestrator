@@ -7,26 +7,32 @@ database:
 
 memarch:
   base_url: ""
+  grpc_address: "memarch:50051"
   timeout: "5s"
 
 audit_log:
   base_url: ""
+  grpc_address: "audit-log:9107"
   timeout: "5s"
 
 notification:
   base_url: ""
+  grpc_address: "notification-service:9109"
   timeout: "5s"
 
 workspace:
   base_url: ""
+  grpc_address: "workspace-service:9110"
   timeout: "5s"
 
 event_bus:
   base_url: "http://event-bus:8111"
+  grpc_address: "event-bus:9111"
   timeout: "5s"
 
 policy:
   require_approval: false
   workflow_schema: "schema/workflow.schema.json"
   base_url: "http://policy-service:8103"
+  grpc_address: "policy-service:9103"
   timeout: "5s"
