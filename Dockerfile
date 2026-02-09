@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.6
+# syntax=docker/dockerfile:1.7
 FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY go.mod .
@@ -11,4 +11,4 @@ WORKDIR /app
 COPY --from=build /out/orchestrator /app/orchestrator
 COPY config.yaml /app/config.yaml
 EXPOSE 8100
-ENTRYPOINT ["/app/orchestrator", "-config", "/app/config.yaml"]
+ENTRYPOINT ["/app/orchestrator", "--config", "/app/config.yaml"]
