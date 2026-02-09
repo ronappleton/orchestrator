@@ -1,7 +1,8 @@
-FROM golang:1.22-alpine AS build
+# syntax=docker/dockerfile:1.6
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY go.mod .
-RUN go mod download
+ RUN --mount=type=ssh go mod download
 COPY . .
 RUN go build -o /out/orchestrator ./cmd/orchestrator
 

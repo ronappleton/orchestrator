@@ -34,8 +34,7 @@ func NewServer(cfg config.Config, logger *zap.Logger) *Server {
     mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
         w.Header().Set("content-type", "text/plain; charset=utf-8")
         w.WriteHeader(http.StatusOK)
-        _, _ = w.Write([]byte("# metrics placeholder
-"))
+        _, _ = w.Write([]byte("# metrics placeholder\n"))
     })
     mux.HandleFunc("/docs", func(w http.ResponseWriter, _ *http.Request) {
         w.Header().Set("content-type", "text/plain; charset=utf-8")
