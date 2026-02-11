@@ -20,6 +20,8 @@ replace github.com/ronappleton/approval-service => ../approval-service
 
 replace github.com/ronappleton/policy-service => ../policy-service
 
+replace github.com/ronappleton/event-bus => ../event-bus
+
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

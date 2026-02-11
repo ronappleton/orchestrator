@@ -6,8 +6,15 @@ WORKDIR /src/orchestrator
 COPY orchestrator/go.mod orchestrator/go.sum ./
 COPY approval-service/go.mod ../approval-service/go.mod
 COPY policy-service/go.mod ../policy-service/go.mod
+COPY event-bus/go.mod ../event-bus/go.mod
+COPY event-bus ../event-bus
 
-RUN --mount=type=ssh go mod download
+RUN --mount=type=ssh /bin/sh -c "apk add --no-cache git openssh ca-certificates && \
+    mkdir -p -m 0700 /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts && \
+    git config --global url.\"ssh://git@github.com/\".insteadOf \"https://github.com/\" && \
+    git config --global url.\"git@github.com:\".insteadOf \"https://github.com/\" && \
+    go mod download"
 
 COPY orchestrator/ ./
 COPY approval-service/ ../approval-service/
