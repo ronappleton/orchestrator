@@ -16,6 +16,15 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require (
+	github.com/hashicorp/go-version v1.8.0 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
+	go.opentelemetry.io/collector/featuregate v1.51.0 // indirect
+	go.opentelemetry.io/collector/pdata v1.51.0 // indirect
+)
+
 replace github.com/ronappleton/approval-service => ../approval-service
 
 replace github.com/ronappleton/policy-service => ../policy-service
@@ -27,6 +36,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/ronappleton/ai-eco-system/pkg/logging v0.0.0
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.40.0 // indirect
@@ -39,3 +49,5 @@ require (
 	golang.org/x/text v0.33.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 )
+
+replace github.com/ronappleton/ai-eco-system/pkg/logging => ../pkg/logging
