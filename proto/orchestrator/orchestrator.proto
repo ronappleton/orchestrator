@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package orchestrator.v1;
+
+option go_package = "github.com/ronappleton/orchestrator/pkg/pb;pb";
+
+service OrchestratorService {
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
+  rpc StreamSessionEvents(StreamSessionEventsRequest) returns (stream SessionEvent);
+  rpc ResumeWithApproval(ResumeWithApprovalRequest) returns (ResumeWithApprovalResponse);
+}
+
+message StartSessionRequest {
+  string prompt = 1;
+  string mode = 2;
+  string workspace_id = 3;
+  string project_id = 4;
+  string user_id = 5;
+}
+
+message StartSessionResponse {
+  string session_id = 1;
+}
+
+message StreamSessionEventsRequest {
+  string session_id = 1;
+}
+
+message SessionEvent {
+  string session_id = 1;
+  string event_type = 2;
+  string data_json = 3;
+  int64 observed_at_unix_ms = 4;
+}
+
+message ResumeWithApprovalRequest {
+  string session_id = 1;
+  string challenge_id = 2;
+  string approval_capability = 3;
+  string token_id = 4;
+}
+
+message ResumeWithApprovalResponse {
+  string status = 1;
+  string message = 2;
+}
