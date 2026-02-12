@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
+	"strings"
 
 	"go.uber.org/fx"
 	"gopkg.in/yaml.v3"
@@ -15,6 +17,8 @@ type Config struct {
 	Notification EndpointConfig `yaml:"notification"`
 	Workspace    EndpointConfig `yaml:"workspace"`
 	EventBus     EndpointConfig `yaml:"event_bus"`
+	Approval     EndpointConfig `yaml:"approval"`
+	GRPC         GRPCConfig     `yaml:"grpc"`
 	Policy       PolicyConfig   `yaml:"policy"`
 }
 
@@ -26,6 +30,11 @@ type EndpointConfig struct {
 	BaseURL     string `yaml:"base_url"`
 	GRPCAddress string `yaml:"grpc_address"`
 	Timeout     string `yaml:"timeout"`
+}
+
+type GRPCConfig struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
 }
 
 type PolicyConfig struct {
@@ -66,6 +75,15 @@ func Default() Config {
 			GRPCAddress: "",
 			Timeout:     "5s",
 		},
+		Approval: EndpointConfig{
+			BaseURL:     "",
+			GRPCAddress: "",
+			Timeout:     "5s",
+		},
+		GRPC: GRPCConfig{
+			Host: "0.0.0.0",
+			Port: 9114,
+		},
 		Policy: PolicyConfig{
 			RequireApproval: false,
 			WorkflowSchema:  "",
@@ -92,6 +110,14 @@ func Load(path string) (Config, error) {
 
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
+	}
+	if v := strings.TrimSpace(os.Getenv("APP_GRPC_HOST")); v != "" {
+		cfg.GRPC.Host = v
+	}
+	if v := strings.TrimSpace(os.Getenv("APP_GRPC_PORT")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			cfg.GRPC.Port = parsed
+		}
 	}
 	return cfg, nil
 }

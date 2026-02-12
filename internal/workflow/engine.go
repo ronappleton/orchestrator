@@ -538,16 +538,18 @@ func (e *Engine) checkPolicyGRPC(ctx context.Context, payload map[string]any) (b
 		return false, "", fmt.Errorf("policy.check requires action")
 	}
 	req := &policypb.CheckRequest{
+		Subject: &policypb.Subject{
+			Service:   firstNonEmpty(stringPayload(payload, "service"), "orchestrator"),
+			ActorType: policypb.ActorType_SYSTEM,
+			ActorId:   stringPayload(payload, "actor_id"),
+		},
 		Action: action,
 	}
-	if v, ok := payload["channel"].(string); ok {
-		req.Channel = v
+	if res := buildResource(payload); res != nil {
+		req.Resource = res
 	}
-	if v, ok := payload["to"].(string); ok {
-		req.To = v
-	}
-	if v, ok := payload["workspace_id"].(string); ok {
-		req.WorkspaceId = v
+	if ctx := buildContext(payload); ctx != nil {
+		req.Context = ctx
 	}
 	rpcCtx, cancel := context.WithTimeout(ctx, e.policyTimeout)
 	defer cancel()
@@ -555,7 +557,82 @@ func (e *Engine) checkPolicyGRPC(ctx context.Context, payload map[string]any) (b
 	if err != nil {
 		return false, "", err
 	}
-	return resp.GetAllowed(), resp.GetReason(), nil
+	return resp.GetDecision() == policypb.Decision_ALLOW, resp.GetReason(), nil
+}
+
+func buildResource(payload map[string]any) *policypb.Resource {
+	resource := &policypb.Resource{}
+	if v := stringPayload(payload, "resource_url"); v != "" {
+		resource.Url = v
+	}
+	if v := stringPayload(payload, "channel"); v != "" {
+		resource.Tool = v
+	}
+	if v := stringPayload(payload, "workflow_id"); v != "" {
+		resource.WorkflowId = v
+	}
+	if paths := stringSlice(payload["paths"]); len(paths) > 0 {
+		resource.Paths = paths
+	}
+	if resource.Url == "" && resource.Tool == "" && resource.WorkflowId == "" && len(resource.Paths) == 0 {
+		return nil
+	}
+	return resource
+}
+
+func buildContext(payload map[string]any) *policypb.Context {
+	ctx := &policypb.Context{}
+	if v := stringPayload(payload, "workspace_id"); v != "" {
+		ctx.WorkspaceId = v
+	}
+	if v := stringPayload(payload, "project_id"); v != "" {
+		ctx.ProjectId = v
+	}
+	if v := stringPayload(payload, "correlation_id"); v != "" {
+		ctx.CorrelationId = v
+	}
+	if ctx.WorkspaceId == "" && ctx.ProjectId == "" && ctx.CorrelationId == "" {
+		return nil
+	}
+	return ctx
+}
+
+func stringPayload(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	if v, ok := payload[key]; ok {
+		return fmt.Sprintf("%v", v)
+	}
+	return ""
+}
+
+func stringSlice(value any) []string {
+	out := []string{}
+	switch typed := value.(type) {
+	case []string:
+		out = append(out, typed...)
+	case []any:
+		for _, item := range typed {
+			if s := fmt.Sprintf("%v", item); s != "" {
+				out = append(out, s)
+			}
+		}
+	case string:
+		if typed != "" {
+			out = append(out, typed)
+		}
+	}
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (e *Engine) executePolicyCheck(ctx context.Context, step Step) (string, int, error) {
