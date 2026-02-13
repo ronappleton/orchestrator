@@ -6,18 +6,25 @@ COPY orchestrator/go.mod orchestrator/go.sum ./
 COPY approval-service/go.mod ../approval-service/go.mod
 COPY policy-service/go.mod ../policy-service/go.mod
 COPY event-bus/go.mod ../event-bus/go.mod
+COPY audit-log/go.mod ../audit-log/go.mod
+COPY memarch/go.mod ../memarch/go.mod
+COPY notification-service/go.mod ../notification-service/go.mod
+COPY workspace-service/go.mod ../workspace-service/go.mod
 COPY event-bus ../event-bus
 
-RUN --mount=type=ssh /bin/sh -c "apk add --no-cache git openssh ca-certificates && \
-    mkdir -p -m 0700 /root/.ssh && \
-    ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    git config --global url.\"ssh://git@github.com/\".insteadOf \"https://github.com/\" && \
-    git config --global url.\"git@github.com:\".insteadOf \"https://github.com/\" && \
-    go mod download"
+RUN apk add --no-cache git openssh ca-certificates
+RUN mkdir -p -m 0700 /root/.ssh
+RUN ssh-keyscan github.com >> /root/.ssh/known_hosts
+RUN git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
+RUN --mount=type=ssh go mod download
 
 COPY orchestrator/ ./
 COPY approval-service/ ../approval-service/
 COPY policy-service/ ../policy-service/
+COPY audit-log/ ../audit-log/
+COPY memarch/ ../memarch/
+COPY notification-service/ ../notification-service/
+COPY workspace-service/ ../workspace-service/
 
 RUN go build -o /out/orchestrator ./cmd/orchestrator
 
