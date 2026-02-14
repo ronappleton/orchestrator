@@ -5,23 +5,21 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
-	eventpb "github.com/ronappleton/event-bus/pkg/pb"
+	"github.com/ronappleton/event-bus/pkg/natsbus"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
-	heartbeatInterval      = 10 * time.Second
-	publishTimeout         = 5 * time.Second
-	defaultEventBusAddress = "event-bus:9111"
-	defaultFabric          = "local"
-	discoveryTopic         = "service.discovery"
+	heartbeatInterval = 10 * time.Second
+	publishTimeout    = 5 * time.Second
+	defaultFabric     = "local"
+	discoverySubject  = "events.discovery.service"
+	discoveryType     = "ServiceDiscovery.v1"
 )
 
 type Params struct {
@@ -52,9 +50,9 @@ func Register(params Params, serviceName, host string, port int) {
 		}
 	}
 
-	busAddress := os.Getenv("EVENT_BUS_GRPC_ADDRESS")
-	if busAddress == "" {
-		busAddress = defaultEventBusAddress
+	natsURL := strings.TrimSpace(os.Getenv("NATS_URL"))
+	if natsURL == "" {
+		natsURL = natsbus.DefaultNATSURL
 	}
 
 	instanceID := fmt.Sprintf("%s-%s-%d-%d", serviceName, host, os.Getpid(), rand.New(rand.NewSource(time.Now().UnixNano())).Int63())
@@ -64,7 +62,7 @@ func Register(params Params, serviceName, host string, port int) {
 		host:        host,
 		port:        port,
 		instanceID:  instanceID,
-		busAddress:  busAddress,
+		natsURL:     natsURL,
 		fabric:      defaultFabric,
 	}
 
@@ -84,12 +82,12 @@ type publisher struct {
 	host        string
 	port        int
 	instanceID  string
-	busAddress  string
+	natsURL     string
 	fabric      string
 
 	mu      sync.Mutex
-	conn    *grpc.ClientConn
-	client  eventpb.EventBusClient
+	nc      *natsbus.Conn
+	js      natsbus.JetStream
 	ticker  *time.Ticker
 	stopCh  chan struct{}
 	running bool
@@ -104,11 +102,9 @@ func (p *publisher) Start(ctx context.Context) error {
 	p.mu.Unlock()
 
 	if err := p.connect(ctx); err != nil {
-		return err
-	}
-	if err := p.publish(ctx, "up"); err != nil {
-		_ = p.closeConn()
-		return err
+		p.logger.Warn("discovery announcer initial connect failed; will retry", zap.Error(err))
+	} else if err := p.publish(ctx, "up"); err != nil {
+		p.logger.Warn("discovery up event publish failed", zap.Error(err))
 	}
 
 	p.mu.Lock()
@@ -121,7 +117,7 @@ func (p *publisher) Start(ctx context.Context) error {
 	p.logger.Info("discovery announcer started",
 		zap.String("service", p.serviceName),
 		zap.String("instance_id", p.instanceID),
-		zap.String("event_bus", p.busAddress),
+		zap.String("nats_url", p.natsURL),
 	)
 	return nil
 }
@@ -171,33 +167,45 @@ func (p *publisher) runHeartbeat() {
 }
 
 func (p *publisher) connect(ctx context.Context) error {
-	dialCtx, cancel := context.WithTimeout(ctx, publishTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, publishTimeout)
 	defer cancel()
 
-	conn, err := grpc.DialContext(
-		dialCtx,
-		p.busAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	nc, js, err := natsbus.Connect(connectCtx, natsbus.Config{
+		URL:  p.natsURL,
+		Name: p.serviceName + "-discovery-announcer",
+	})
 	if err != nil {
 		return err
 	}
+	if err := natsbus.EnsureStreams(connectCtx, js, natsbus.StreamSpec{
+		Name:     natsbus.DefaultEventStream,
+		Subjects: []string{natsbus.DefaultEventSubject},
+	}); err != nil {
+		nc.Close()
+		return err
+	}
+
 	p.mu.Lock()
-	p.conn = conn
-	p.client = eventpb.NewEventBusClient(conn)
+	p.nc = nc
+	p.js = js
 	p.mu.Unlock()
 	return nil
 }
 
 func (p *publisher) publish(ctx context.Context, eventType string) error {
 	p.mu.Lock()
-	client := p.client
+	js := p.js
 	p.mu.Unlock()
-	if client == nil {
-		return fmt.Errorf("event-bus client unavailable")
+	if js == nil {
+		if err := p.connect(ctx); err != nil {
+			return fmt.Errorf("nats jetstream unavailable: %w", err)
+		}
+		p.mu.Lock()
+		js = p.js
+		p.mu.Unlock()
 	}
 
-	payload, err := structpb.NewStruct(map[string]any{
+	payload := map[string]any{
 		"event_type":          eventType,
 		"service_name":        p.serviceName,
 		"instance_id":         p.instanceID,
@@ -205,14 +213,15 @@ func (p *publisher) publish(ctx context.Context, eventType string) error {
 		"port":                p.port,
 		"fabric":              p.fabric,
 		"observed_at_unix_ms": time.Now().UnixMilli(),
-	})
-	if err != nil {
-		return err
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, publishTimeout)
 	defer cancel()
-	_, err = client.Publish(callCtx, &eventpb.PublishRequest{Topic: discoveryTopic, Payload: payload})
+
+	_, err := natsbus.PublishEvent(callCtx, js, discoverySubject, natsbus.EventEnvelope{
+		Type:    discoveryType,
+		Payload: payload,
+	})
 	if err != nil {
 		p.logger.Warn("discovery event publish failed", zap.String("event_type", eventType), zap.Error(err))
 	}
@@ -222,12 +231,10 @@ func (p *publisher) publish(ctx context.Context, eventType string) error {
 func (p *publisher) closeConn() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.conn != nil {
-		err := p.conn.Close()
-		p.conn = nil
-		p.client = nil
-		return err
+	if p.nc != nil {
+		p.nc.Close()
+		p.nc = nil
+		p.js = nil
 	}
-	p.client = nil
 	return nil
 }

@@ -133,4 +133,4 @@ go build -o bin/orchestrator ./cmd/orchestrator
 - `workspace.check` -> GET from workspace-service `/v1/workspaces/{id}`
 
 ## Events
-Run and step events are also published to event-bus when configured.
+Run and step events are also published to NATS JetStream when configured.

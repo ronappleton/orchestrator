@@ -72,7 +72,7 @@ func Default() Config {
 		},
 		EventBus: EndpointConfig{
 			BaseURL:     "",
-			GRPCAddress: "",
+			GRPCAddress: "nats://nats:4222",
 			Timeout:     "5s",
 		},
 		Approval: EndpointConfig{

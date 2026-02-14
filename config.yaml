@@ -23,7 +23,7 @@ workspace:
 
 event_bus:
   base_url: ""
-  grpc_address: "event-bus:9111"
+  grpc_address: "nats://nats:4222"
   timeout: "5s"
 
 policy:

@@ -3,7 +3,6 @@ package investigationworker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,15 +10,13 @@ import (
 	"strings"
 	"time"
 
-	eventpb "github.com/ronappleton/event-bus/pkg/pb"
+	"github.com/ronappleton/event-bus/pkg/natsbus"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
-	investigationTopic       = "observability.investigation"
+	investigationSubject     = "events.observability.investigation"
 	investigationRequestedV1 = "InvestigationRequested.v1"
 )
 
@@ -28,27 +25,27 @@ func Module() fx.Option {
 }
 
 func register(lc fx.Lifecycle, logger *zap.Logger) {
-	address := envOr("EVENT_BUS_GRPC_ADDRESS", "event-bus:9111")
+	natsURL := envOr("NATS_URL", natsbus.DefaultNATSURL)
 	managementURL := strings.TrimRight(envOr("MANAGEMENT_SERVICE_URL", "http://management-service:8125"), "/")
-	if address == "" || managementURL == "" {
+	if natsURL == "" || managementURL == "" {
 		logger.Info("investigation worker disabled: missing configuration")
 		return
 	}
 	worker := &worker{
 		logger:        logger,
-		eventBusAddr:  address,
+		natsURL:       natsURL,
 		managementURL: managementURL,
 		httpClient:    &http.Client{Timeout: 5 * time.Second},
 	}
 	var cancel context.CancelFunc
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
+		OnStart: func(context.Context) error {
 			runCtx, runCancel := context.WithCancel(context.Background())
 			cancel = runCancel
 			go worker.run(runCtx)
 			return nil
 		},
-		OnStop: func(ctx context.Context) error {
+		OnStop: func(context.Context) error {
 			if cancel != nil {
 				cancel()
 			}
@@ -59,7 +56,7 @@ func register(lc fx.Lifecycle, logger *zap.Logger) {
 
 type worker struct {
 	logger        *zap.Logger
-	eventBusAddr  string
+	natsURL       string
 	managementURL string
 	httpClient    *http.Client
 }
@@ -86,38 +83,61 @@ func (w *worker) run(ctx context.Context) {
 }
 
 func (w *worker) consume(ctx context.Context) error {
-	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	conn, err := grpc.DialContext(dialCtx, w.eventBusAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	nc, js, err := natsbus.Connect(connectCtx, natsbus.Config{
+		URL:  w.natsURL,
+		Name: "orchestrator-investigation-worker",
+	})
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer nc.Close()
 
-	client := eventpb.NewEventBusClient(conn)
-	stream, err := client.Stream(ctx, &eventpb.StreamRequest{Topic: investigationTopic})
-	if err != nil {
+	if err := natsbus.EnsureStreams(connectCtx, js, natsbus.StreamSpec{
+		Name:     natsbus.DefaultEventStream,
+		Subjects: []string{natsbus.DefaultEventSubject},
+	}); err != nil {
 		return err
 	}
-	w.logger.Info("investigation worker connected", zap.String("topic", investigationTopic))
 
-	for {
-		evt, err := stream.Recv()
-		if err != nil {
-			return err
+	stop, err := natsbus.SubscribeDurable(ctx, js, natsbus.DurableConsumerConfig{
+		Stream:      natsbus.DefaultEventStream,
+		Subject:     investigationSubject,
+		DurableName: "orchestrator-investigation-worker",
+		FetchBatch:  8,
+		FetchWait:   500 * time.Millisecond,
+		Retry: natsbus.RetryPolicy{
+			AckWait:    30 * time.Second,
+			MaxDeliver: 8,
+			Backoff: []time.Duration{
+				500 * time.Millisecond,
+				2 * time.Second,
+				5 * time.Second,
+				15 * time.Second,
+			},
+		},
+	}, func(handlerCtx context.Context, evt natsbus.ReceivedEvent) natsbus.HandlerResult {
+		if evt.Envelope.Type != investigationRequestedV1 {
+			return natsbus.Ack()
 		}
-		envelope, err := decodeEnvelope(evt)
-		if err != nil {
-			w.logger.Warn("investigation worker dropped invalid event", zap.Error(err))
-			continue
-		}
-		if envelope.Type != investigationRequestedV1 {
-			continue
-		}
-		if err := w.handleInvestigationRequested(ctx, envelope.Payload); err != nil {
+		if err := w.handleInvestigationRequested(handlerCtx, evt.Envelope.Payload); err != nil {
 			w.logger.Warn("investigation worker failed to post note", zap.Error(err))
+			return natsbus.Nak(2 * time.Second)
 		}
+		return natsbus.Ack()
+	})
+	if err != nil {
+		return err
 	}
+	defer stop()
+
+	w.logger.Info("investigation worker connected",
+		zap.String("subject", investigationSubject),
+		zap.String("nats_url", w.natsURL),
+	)
+	<-ctx.Done()
+	return nil
 }
 
 func (w *worker) handleInvestigationRequested(ctx context.Context, payload map[string]any) error {
@@ -127,7 +147,7 @@ func (w *worker) handleInvestigationRequested(ctx context.Context, payload map[s
 	}
 	w.logger.Info("investigation requested received", zap.String("investigation_id", investigationID))
 
-	body, _ := json.Marshal(map[string]string{"note": "AI worker queued. Playbook: none (MVP)."})
+	body := []byte(`{"note":"AI worker queued. Playbook: none (MVP)."}`)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/investigations/%s/notes", w.managementURL, investigationID), bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -144,36 +164,6 @@ func (w *worker) handleInvestigationRequested(ctx context.Context, payload map[s
 		return fmt.Errorf("management-service returned status %d", resp.StatusCode)
 	}
 	return nil
-}
-
-type envelope struct {
-	Type    string         `json:"type"`
-	Payload map[string]any `json:"payload"`
-}
-
-func decodeEnvelope(evt *eventpb.Event) (envelope, error) {
-	if evt == nil || evt.Payload == nil {
-		return envelope{}, fmt.Errorf("empty payload")
-	}
-	fields := evt.Payload.AsMap()
-	value := envelope{}
-	if kind, ok := fields["type"].(string); ok {
-		value.Type = kind
-	}
-	if payload, ok := fields["payload"].(map[string]any); ok {
-		value.Payload = payload
-	} else {
-		value.Payload = fields
-	}
-	if value.Type == "" {
-		if hint, ok := fields["event_type"].(string); ok {
-			value.Type = hint
-		}
-	}
-	if value.Type == "" {
-		return envelope{}, fmt.Errorf("missing event type")
-	}
-	return value, nil
 }
 
 func envOr(key string, fallback string) string {

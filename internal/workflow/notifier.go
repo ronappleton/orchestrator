@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	auditpb "github.com/ronappleton/audit-log/pkg/pb"
-	eventpb "github.com/ronappleton/event-bus/pkg/pb"
+	"github.com/ronappleton/event-bus/pkg/natsbus"
 	memarchpb "github.com/ronappleton/memarch/pkg/pb"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -27,8 +29,8 @@ type Notifier struct {
 	memarchClient memarchpb.MemArchServiceClient
 	auditConn     *grpc.ClientConn
 	auditClient   auditpb.AuditLogClient
-	eventConn     *grpc.ClientConn
-	eventClient   eventpb.EventBusClient
+	eventNC       *natsbus.Conn
+	eventJS       natsbus.JetStream
 }
 
 type endpoint struct {
@@ -130,22 +132,7 @@ func (n *Notifier) postEventBus(payload map[string]any) {
 	if n.eventBus == nil {
 		return
 	}
-	if n.eventBus.grpcAddress != "" {
-		if err := n.postEventBusGRPC(payload); err == nil {
-			return
-		}
-		if n.eventBus.baseURL == "" {
-			return
-		}
-	}
-	if n.eventBus.baseURL == "" {
-		return
-	}
-	body := map[string]any{
-		"topic":   payload["event"],
-		"payload": payload,
-	}
-	n.postJSON(n.eventBus.baseURL+"/v1/events", body)
+	_ = n.postEventBusNATS(payload)
 }
 
 func (n *Notifier) postJSON(url string, payload map[string]any) {
@@ -206,20 +193,23 @@ func (n *Notifier) postAuditGRPC(payload map[string]any) error {
 	return err
 }
 
-func (n *Notifier) postEventBusGRPC(payload map[string]any) error {
-	if n.eventBus == nil || n.eventBus.grpcAddress == "" {
+func (n *Notifier) postEventBusNATS(payload map[string]any) error {
+	if n.eventBus == nil {
 		return nil
 	}
 	if err := n.ensureEventClient(context.Background()); err != nil {
 		return err
 	}
-	topic, _ := payload["event"].(string)
-	st, _ := structpb.NewStruct(payload)
+	eventName, _ := payload["event"].(string)
+	subject := "events.orchestrator.event"
+	if strings.TrimSpace(eventName) != "" {
+		subject = "events.orchestrator." + strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(eventName, ".", "_"), " ", "_"))
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), n.eventBus.timeout)
 	defer cancel()
-	_, err := n.eventClient.Publish(ctx, &eventpb.PublishRequest{
-		Topic:   topic,
-		Payload: st,
+	_, err := natsbus.PublishEvent(ctx, n.eventJS, subject, natsbus.EventEnvelope{
+		Type:    "OrchestratorEvent.v1",
+		Payload: payload,
 	})
 	return err
 }
@@ -273,25 +263,36 @@ func (n *Notifier) ensureAuditClient(ctx context.Context) error {
 }
 
 func (n *Notifier) ensureEventClient(ctx context.Context) error {
-	if n.eventClient != nil {
+	if n.eventJS != nil {
 		return nil
 	}
-	if n.eventBus == nil || n.eventBus.grpcAddress == "" {
-		return fmt.Errorf("event-bus grpc address not configured")
+	if n.eventBus == nil {
+		return fmt.Errorf("event bus endpoint not configured")
+	}
+	natsURL := strings.TrimSpace(n.eventBus.grpcAddress)
+	if natsURL == "" {
+		natsURL = strings.TrimSpace(os.Getenv("NATS_URL"))
+	}
+	if natsURL == "" {
+		natsURL = natsbus.DefaultNATSURL
 	}
 	dialCtx, cancel := context.WithTimeout(ctx, n.eventBus.timeout)
 	defer cancel()
-	conn, err := grpc.DialContext(
-		dialCtx,
-		n.eventBus.grpcAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
-	)
+	nc, js, err := natsbus.Connect(dialCtx, natsbus.Config{
+		URL:  natsURL,
+		Name: "orchestrator-notifier",
+	})
 	if err != nil {
 		return err
 	}
-	n.eventConn = conn
-	n.eventClient = eventpb.NewEventBusClient(conn)
+	if err := natsbus.EnsureStreams(dialCtx, js, natsbus.StreamSpec{
+		Name:     natsbus.DefaultEventStream,
+		Subjects: []string{natsbus.DefaultEventSubject},
+	}); err != nil {
+		nc.Close()
+		return err
+	}
+	n.eventNC = nc
+	n.eventJS = js
 	return nil
 }
