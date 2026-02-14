@@ -5,12 +5,14 @@ WORKDIR /src/orchestrator
 COPY orchestrator/go.mod orchestrator/go.sum ./
 COPY approval-service/go.mod ../approval-service/go.mod
 COPY policy-service/go.mod ../policy-service/go.mod
-COPY event-bus/go.mod ../event-bus/go.mod
+COPY pkg/natsbus/go.mod ../pkg/natsbus/go.mod
+COPY pkg/servicediscovery/go.mod ../pkg/servicediscovery/go.mod
 COPY audit-log/go.mod ../audit-log/go.mod
 COPY memarch/go.mod ../memarch/go.mod
 COPY notification-service/go.mod ../notification-service/go.mod
 COPY workspace-service/go.mod ../workspace-service/go.mod
-COPY event-bus ../event-bus
+COPY pkg/natsbus/ ../pkg/natsbus/
+COPY pkg/servicediscovery/ ../pkg/servicediscovery/
 
 RUN apk add --no-cache git openssh ca-certificates
 RUN mkdir -p -m 0700 /root/.ssh

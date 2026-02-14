@@ -11,7 +11,7 @@ import (
 	"time"
 
 	auditpb "github.com/ronappleton/audit-log/pkg/pb"
-	"github.com/ronappleton/event-bus/pkg/natsbus"
+	"github.com/ronappleton/ai-eco-system/pkg/natsbus"
 	memarchpb "github.com/ronappleton/memarch/pkg/pb"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"

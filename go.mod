@@ -1,6 +1,6 @@
 module github.com/ronappleton/orchestrator
 
-go 1.24.0
+go 1.25.1
 
 require (
 	github.com/jackc/pgx/v5 v5.8.0
@@ -37,9 +37,10 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/ronappleton/ai-eco-system/pkg/natsbus v0.0.0
+	github.com/ronappleton/ai-eco-system/pkg/servicediscovery v0.0.0
 	github.com/ronappleton/approval-service v0.0.0
 	github.com/ronappleton/audit-log v0.0.0
-	github.com/ronappleton/event-bus v0.2.0
 	github.com/ronappleton/memarch v0.0.0
 	github.com/ronappleton/notification-service v0.0.0
 	github.com/ronappleton/policy-service v0.2.0
@@ -67,8 +68,6 @@ replace github.com/ronappleton/memarch => ../memarch
 
 replace github.com/ronappleton/audit-log => ../audit-log
 
-replace github.com/ronappleton/event-bus => ../event-bus
-
 replace github.com/ronappleton/notification-service => ../notification-service
 
 replace github.com/ronappleton/policy-service => ../policy-service
@@ -76,3 +75,7 @@ replace github.com/ronappleton/policy-service => ../policy-service
 replace github.com/ronappleton/workspace-service => ../workspace-service
 
 replace github.com/ronappleton/approval-service => ../approval-service
+
+replace github.com/ronappleton/ai-eco-system/pkg/natsbus => ../pkg/natsbus
+
+replace github.com/ronappleton/ai-eco-system/pkg/servicediscovery => ../pkg/servicediscovery

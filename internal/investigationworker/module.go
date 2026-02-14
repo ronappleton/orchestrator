@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ronappleton/event-bus/pkg/natsbus"
+	"github.com/ronappleton/ai-eco-system/pkg/natsbus"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
